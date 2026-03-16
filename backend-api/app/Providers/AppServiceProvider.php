@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Models\Tenant;             // <--- Ajoute ceci
+use App\Observers\TenantObserver;   // <--- Ajoute ceci
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // C'EST ICI QUE LA MAGIE OPÈRE
+        Tenant::observe(TenantObserver::class);
     }
 }
