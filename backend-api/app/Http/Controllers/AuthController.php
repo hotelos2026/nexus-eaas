@@ -63,42 +63,45 @@ class AuthController extends Controller
      * Connexion : Authentifie l'utilisateur sur son instance spécifique.
      */
     public function login(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+{
+    $request->validate([
+        'email' => 'required|email',
+        'password' => 'required',
+    ]);
+
+    try {
+        // 1. On cherche l'utilisateur dans le schéma du tenant
+        $user = User::on('tenant')->where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'message' => 'Identifiants invalides pour cette instance.'
+            ], 401);
+        }
+
+        // 2. CRUCIAL : On force l'instance du modèle à utiliser la connexion 'tenant'
+        // Sans cela, createToken() cherchera la table dans le schéma public et plantera.
+        $user->setConnection('tenant');
+
+        // 3. Génération du Token
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Connexion réussie',
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'name' => $user->name,
+                'email' => $user->email,
+            ]
         ]);
 
-        try {
-            // Note: Le middleware TenantMiddleware doit déjà avoir configuré 
-            // la connexion 'tenant' via le header X-Tenant du Frontend.
-            
-            $user = User::on('tenant')->where('email', $request->email)->first();
-
-            if (!$user || !Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    'message' => 'Identifiants invalides pour cette instance.'
-                ], 401);
-            }
-
-            // Génération du Token Sanctum
-            $token = $user->createToken('auth_token')->plainTextToken;
-
-            return response()->json([
-                'message' => 'Connexion réussie',
-                'access_token' => $token,
-                'token_type' => 'Bearer',
-                'user' => [
-                    'name' => $user->name,
-                    'email' => $user->email,
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Erreur lors de la connexion',
-                'details' => $e->getMessage()
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        Log::error("Crash Login: " . $e->getMessage());
+        return response()->json([
+            'error' => 'Erreur lors de la connexion',
+            'details' => $e->getMessage()
+        ], 500);
     }
+}
 }
