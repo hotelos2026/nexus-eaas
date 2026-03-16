@@ -1,9 +1,0 @@
-node_modules
-vendor
-.env
-.env.local
-venv
-.next
-storage
-postgres-data
-.DS_Store
