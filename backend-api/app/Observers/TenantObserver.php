@@ -28,18 +28,20 @@ class TenantObserver
 {
     $schemaName = 'tenant_' . $tenant->domain;
 
-    // 1. Créer le schéma dans Postgres
-    DB::statement("CREATE SCHEMA \"$schemaName\"");
+    // 1. Création du schéma physique
+    DB::statement("CREATE SCHEMA IF NOT EXISTS \"$schemaName\"");
 
-    // 2. Lancer les migrations SPECIFIQUEMENT dans ce nouveau schéma
-    // On force la connexion 'tenant' à pointer sur le nouveau schéma
+    // 2. On définit une variable d'environnement temporaire pour cette exécution
+    // Cela aide Laravel à savoir quel schéma viser si tu as configuré ton config/database.php
+    putenv("DB_SCHEMA=$schemaName");
     config(['database.connections.tenant.search_path' => $schemaName]);
     DB::purge('tenant');
 
+    // 3. Exécution de la migration avec sortie forcée pour le debug
     Artisan::call('migrate', [
         '--database' => 'tenant',
-        '--path' => 'database/migrations/tenant', // Si tu as séparé tes migrations
-        '--force' => true,
+        '--force'    => true,
+        '--path'     => 'database/migrations', // Force le chemin standard
     ]);
 }
 }
