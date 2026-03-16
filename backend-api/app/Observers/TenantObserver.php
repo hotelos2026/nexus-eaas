@@ -25,34 +25,21 @@ class TenantObserver
      * On s'occupe de la partie lourde (Infrastructure).
      */
     public function created(Tenant $tenant)
-    {
-        $schemaName = $tenant->database_schema;
+{
+    $schemaName = 'tenant_' . $tenant->domain;
 
-        try {
-            // 1. Création physique du schéma
-            DB::statement("CREATE SCHEMA IF NOT EXISTS $schemaName");
+    // 1. Créer le schéma dans Postgres
+    DB::statement("CREATE SCHEMA \"$schemaName\"");
 
-            // 2. Configuration dynamique de la connexion 'tenant'
-            // Attention : Pour Postgres, on utilise 'search_path'
-            config(['database.connections.tenant.search_path' => $schemaName]);
-            
-            // On purge la connexion pour forcer Laravel à prendre en compte le nouveau search_path
-            DB::purge('tenant');
-            DB::reconnect('tenant');
+    // 2. Lancer les migrations SPECIFIQUEMENT dans ce nouveau schéma
+    // On force la connexion 'tenant' à pointer sur le nouveau schéma
+    config(['database.connections.tenant.search_path' => $schemaName]);
+    DB::purge('tenant');
 
-            // 3. Migration des tables "Apps" dans le nouveau schéma
-            Artisan::call('migrate', [
-                '--database' => 'tenant',
-                '--path'     => 'database/migrations/tenant', 
-                '--force'    => true,
-            ]);
-
-            Log::info("Instance créée avec succès pour : {$tenant->name} (Schéma: $schemaName)");
-
-        } catch (\Exception $e) {
-            Log::error("Erreur lors de la création de l'instance pour {$tenant->name}: " . $e->getMessage());
-            // Optionnel : tu pourrais supprimer le tenant ici si l'infra échoue
-            throw $e;
-        }
-    }
+    Artisan::call('migrate', [
+        '--database' => 'tenant',
+        '--path' => 'database/migrations/tenant', // Si tu as séparé tes migrations
+        '--force' => true,
+    ]);
+}
 }

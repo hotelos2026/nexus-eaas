@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
-
+use App\Http\Controllers\AuthController;
 // On protège la route avec le middleware qu'on a créé
 Route::middleware(['tenant'])->group(function () {
 
@@ -34,3 +34,6 @@ Route::middleware(['tenant'])->group(function () {
     });
 
 });
+
+// Cette route est publique (pas besoin de token pour s'inscrire)
+Route::post('/register', [AuthController::class, 'register']);
