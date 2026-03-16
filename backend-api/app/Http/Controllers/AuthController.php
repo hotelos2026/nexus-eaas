@@ -7,12 +7,16 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
+    /**
+     * Inscription : Crée un nouveau Tenant (Schéma) et son administrateur.
+     */
     public function register(Request $request)
     {
-        // 1. Validation rigoureuse
+        // 1. Validation des données
         $request->validate([
             'company_name' => 'required|string|max:255',
             'domain'       => 'required|string|alpha_dash|unique:tenants,domain',
@@ -22,21 +26,18 @@ class AuthController extends Controller
         ]);
 
         try {
-            // 2. Création du Tenant (Schéma Public)
-            // L'Observer va automatiquement créer le schéma Postgres 'tenant_domain'
+            // 2. Création du Tenant dans le schéma public (via l'Observer)
             $tenant = Tenant::create([
                 'name' => $request->company_name,
                 'domain' => $request->domain,
             ]);
 
-            // 3. Connexion dynamique au nouveau schéma
-            // On informe Laravel qu'on veut travailler dans le schéma qui vient d'être créé
+            // 3. Bascule dynamique sur le schéma du nouveau tenant
             $schema = 'tenant_' . $request->domain;
             config(['database.connections.tenant.search_path' => $schema]);
-            DB::purge('tenant'); // On vide la connexion précédente
+            DB::purge('tenant'); 
             
-            // 4. Création de l'utilisateur admin du Tenant
-            // On force l'usage de la connexion 'tenant'
+            // 4. Création de l'utilisateur dans son schéma dédié
             $user = User::on('tenant')->create([
                 'name' => $request->name,
                 'email' => $request->email,
@@ -50,8 +51,52 @@ class AuthController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            Log::error("Erreur Register Tenant: " . $e->getMessage());
             return response()->json([
                 'error' => 'Échec de l\'inscription',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Connexion : Authentifie l'utilisateur sur son instance spécifique.
+     */
+    public function login(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        try {
+            // Note: Le middleware TenantMiddleware doit déjà avoir configuré 
+            // la connexion 'tenant' via le header X-Tenant du Frontend.
+            
+            $user = User::on('tenant')->where('email', $request->email)->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'message' => 'Identifiants invalides pour cette instance.'
+                ], 401);
+            }
+
+            // Génération du Token Sanctum
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Connexion réussie',
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'user' => [
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Erreur lors de la connexion',
                 'details' => $e->getMessage()
             ], 500);
         }
