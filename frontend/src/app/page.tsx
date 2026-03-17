@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { 
   LayoutGrid, ChevronRight, Layers, 
-  Search, Sparkles, Loader2, X, Shield, Cpu, 
-  BarChart3, Boxes, Activity, Zap
+  Sparkles, Loader2, X, Shield, Cpu, 
+  Boxes, Activity, Zap
 } from 'lucide-react';
+import NexusPublicAssistant from '@/components/NexusPublicAssistant';
 
 export default function LandingPage() {
   const [searchTenant, setSearchTenant] = useState('');
@@ -50,12 +51,12 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#020203] text-white selection:bg-purple-500/30 font-sans overflow-x-hidden">
       
-      {/* --- GRID BACKGROUND EFFECT (CORRIGÉ v4) --- */}
+      {/* --- GRID BACKGROUND EFFECT (Tailwind v4 Optimized) --- */}
       <div className="fixed inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[40px_40px] mask-[radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none" />
 
-      {/* --- NEXUS AI INTELLIGENCE OVERLAY (z-100 CORRIGÉ) --- */}
+      {/* --- NEXUS AI INTELLIGENCE POPUP --- */}
       {showPopup && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-100 w-[95%] max-w-lg animate-in fade-in slide-in-from-top-8 duration-500 px-2">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-9999 w-[95%] max-w-lg animate-in fade-in slide-in-from-top-8 duration-500 px-2">
           <div className="bg-slate-900/90 backdrop-blur-2xl border border-purple-500/40 p-5 rounded-3xl shadow-[0_0_50px_rgba(147,51,234,0.25)] flex items-start gap-4">
             <div className="bg-purple-600/20 p-3 rounded-2xl shrink-0 border border-purple-500/30">
               <Sparkles className="text-purple-400" size={22} />
@@ -70,10 +71,10 @@ export default function LandingPage() {
               </p>
               <div className="mt-5 flex items-center gap-3">
                 <Link href="/register" className="text-[10px] text-white font-black uppercase tracking-widest bg-purple-600 px-5 py-2.5 rounded-xl hover:bg-purple-500 transition-all shadow-lg shadow-purple-600/20">
-                   Propulser l'Ecosystème
+                    Propulser l'Ecosystème
                 </Link>
                 <button onClick={() => setShowPopup(false)} className="text-[10px] text-slate-400 font-bold uppercase tracking-widest border border-slate-700/50 px-5 py-2.5 rounded-xl hover:bg-slate-800 transition">
-                   Ignorer
+                    Ignorer
                 </button>
               </div>
             </div>
@@ -88,7 +89,6 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-[#020203]/60 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => router.push('/')}>
-            {/* bg-linear CORRIGÉ */}
             <div className="w-10 h-10 bg-linear-to-br from-purple-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-600/20 group-hover:scale-105 transition-transform">
               <Boxes size={22} className="text-white" />
             </div>
@@ -98,9 +98,9 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-8 text-[11px] font-black uppercase tracking-widest text-slate-400">
-            <Link href="#" className="hover:text-purple-400 transition">Architecture</Link>
-            <Link href="#" className="hover:text-purple-400 transition">Modules</Link>
-            <Link href="#" className="hover:text-purple-400 transition">Sécurité</Link>
+            <Link href="#architecture" className="hover:text-purple-400 transition">Architecture</Link>
+            <Link href="#modules" className="hover:text-purple-400 transition">Modules</Link>
+            <Link href="#securite" className="hover:text-purple-400 transition">Sécurité</Link>
           </div>
           <Link href="/register" className="bg-white text-black px-6 py-2.5 rounded-xl hover:bg-purple-50 transition font-black text-[10px] uppercase tracking-widest shadow-xl shadow-white/5">
             Initialiser
@@ -115,9 +115,8 @@ export default function LandingPage() {
             <Zap size={12} className="fill-purple-400" /> Beyond SaaS : EaaS Framework
           </div>
           
-          <h1 className="text-6xl md:text-[110px] font-black mb-8 tracking-[ -0.04em] leading-[0.85] inline-block">
+          <h1 className="text-6xl md:text-[110px] font-black mb-8 tracking-[-0.04em] leading-[0.85] inline-block">
             L'Écosystème <br />
-            {/* bg-linear CORRIGÉ */}
             <span className="text-transparent bg-clip-text bg-linear-to-b from-white via-slate-200 to-slate-500">
               Vivant & Modulaire.
             </span>
@@ -127,9 +126,8 @@ export default function LandingPage() {
             Nexus n'est pas un logiciel figé. C'est une <span className="text-white">infrastructure EaaS intelligente</span> qui déploie des environnements isolés et s'auto-configure selon la sémantique de votre métier.
           </p>
           
-          {/* --- THE COMMAND CENTER (SEARCH) --- */}
+          {/* --- SEARCH COMMAND CENTER --- */}
           <div className="max-w-2xl mx-auto mb-20 px-4 relative group">
-            {/* bg-linear CORRIGÉ */}
             <div className="absolute -inset-1 bg-linear-to-r from-purple-600 to-blue-600 rounded-[2.5rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
             <form onSubmit={handleFindInstance} className="relative">
               <input 
@@ -164,7 +162,7 @@ export default function LandingPage() {
       </header>
 
       {/* --- FEATURES GRID --- */}
-      <section className="py-24 px-6 bg-[#040406] border-y border-white/5 relative">
+      <section id="modules" className="py-24 px-6 bg-[#040406] border-y border-white/5 relative">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <FeatureCard 
@@ -201,6 +199,10 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+
+      {/* --- SENTINEL AI REAL-TIME ASSISTANT --- */}
+      <NexusPublicAssistant />
+
     </div>
   );
 }
