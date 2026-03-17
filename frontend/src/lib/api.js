@@ -10,16 +10,11 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
     if (typeof window !== 'undefined') {
-        // --- 1. GESTION DE L'AUTHENTIFICATION ---
-        const token = localStorage.getItem('nexus_token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-
-        // --- 2. GESTION DU MULTI-TENANCY ---
+        // --- 1. RÉCUPÉRATION DU TENANT (IDENTITÉ INSTANCE) ---
         const urlParams = new URLSearchParams(window.location.search);
-        let tenant = urlParams.get('tenant');
+        let tenant = urlParams.get('tenant') || localStorage.getItem('current_tenant');
 
+        // Détection automatique par sous-domaine si absent
         if (!tenant) {
             const hostname = window.location.hostname;
             const parts = hostname.split('.');
@@ -28,8 +23,17 @@ api.interceptors.request.use((config) => {
             }
         }
 
+        // Injection du header de l'instance
         if (tenant) {
             config.headers['X-Tenant'] = tenant;
+            localStorage.setItem('current_tenant', tenant);
+        }
+
+        // --- 2. RÉCUPÉRATION DU TOKEN (IDENTITÉ UTILISATEUR) ---
+        // Très important pour accéder aux routes protégées après le login
+        const token = localStorage.getItem('nexus_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
         }
     }
     return config;
