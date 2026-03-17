@@ -28,6 +28,16 @@ export default function LandingPage() {
   const handleFindInstance = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = searchTenant.trim().toLowerCase();
+
+    // --- 🚀 NEXUS EASTER EGG : PROPULSION ---
+    if (query === 'propulsion') {
+      setIsVerifying(true);
+      setTimeout(() => {
+        router.push('/register');
+      }, 800);
+      return;
+    }
+
     if (query.length < 2) return;
 
     setIsVerifying(true);
@@ -201,7 +211,10 @@ export default function LandingPage() {
       </footer>
 
       {/* --- SENTINEL AI REAL-TIME ASSISTANT --- */}
-      <NexusPublicAssistant />
+      {/* 🛡️ CORRECTION FINALE : Isolé dans un z-index maximal pour éviter les conflits */}
+      <div className="relative z-9999">
+        <NexusPublicAssistant />
+      </div>
 
     </div>
   );
