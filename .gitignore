@@ -1,0 +1,39 @@
+# --- FRONTEND (Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env*
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# --- BACKEND (Laravel) ---
+backend/vendor/
+backend/.env
+backend/.env.backup
+backend/storage/*.key
+backend/public/storage
+backend/bootstrap/cache/*
+backend/storage/logs/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/storage/framework/cache/data/*
+backend/.phpunit.result.cache
+
+# --- AI-SERVICE (FastAPI / Python) ---
+ai-service/venv/
+ai-service/env/
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/*.pyc
+ai-service/.env
+ai-service/.pytest_cache/
+ai-service/.vscode/
+
+# --- GLOBALS & OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
