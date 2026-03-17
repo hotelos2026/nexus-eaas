@@ -14,11 +14,10 @@ class TenantController extends Controller
 {
     /**
      * ÉTAPE 1 : NEXUS FINDER (Recherche & Analyse IA)
-     * Vérifie l'existence du slug technique dans PostgreSQL.
+     * Vérifie si l'instance existe déjà physiquement.
      */
     public function exists($name)
     {
-        // Normalisation stricte pour la recherche de schéma
         $slug = strtolower(preg_replace('/[^a-z0-9-]/', '', $name));
         
         if (strlen($slug) < 2) {
@@ -31,7 +30,6 @@ class TenantController extends Controller
         $schemaName = 'tenant_' . $slug;
 
         try {
-            // Vérification physique du schéma
             $exists = DB::select("
                 SELECT schema_name FROM information_schema.schemata 
                 WHERE schema_name = ?
@@ -45,7 +43,7 @@ class TenantController extends Controller
                 ], 200);
             }
 
-            // Si absent, on interroge l'IA Python pour un message de bienvenue pro
+            // Appel IA pour un message marketing si l'instance n'existe pas
             return $this->getAiInsights($name);
 
         } catch (\Exception $e) {
@@ -56,40 +54,37 @@ class TenantController extends Controller
 
     /**
      * ÉTAPE 2 : PROVISIONNEMENT TEMPS RÉEL (EaaS Engine)
-     * Reçoit le nom long et le slug court pour créer l'infrastructure isolée.
+     * Crée le schéma, les tables, l'admin et génère le message de bienvenue IA.
      */
     public function provision(Request $request)
     {
         $request->validate([
-            'company_name' => 'required|string|min:3', // Ex: "Institut Supérieur..."
-            'tenant_slug'  => 'required|string|min:3', // Ex: "iscamen"
+            'company_name' => 'required|string|min:3',
+            'tenant_slug'  => 'required|string|min:3',
             'admin_email'  => 'required|email',
             'password'     => 'required|min:8',
             'admin_name'   => 'required|string',
             'sector'       => 'required|string' 
         ]);
 
-        // On utilise le slug technique pour le nom du schéma
         $slug = strtolower(preg_replace('/[^a-z0-9-]/', '', $request->tenant_slug));
         $schemaName = "tenant_" . $slug;
 
         try {
-            // 1. Vérification si le schéma existe déjà
+            // 1. Sécurité : Vérifier si le schéma existe
             $check = DB::select("SELECT schema_name FROM information_schema.schemata WHERE schema_name = ?", [$schemaName]);
             if (!empty($check)) {
                 return response()->json(['status' => 'error', 'message' => "L'identifiant '$slug' est déjà réservé."], 422);
             }
 
-            // 2. Création du Schéma SQL isolé
+            // 2. Création de l'infrastructure SQL
             DB::statement("CREATE SCHEMA \"$schemaName\"");
-
-            // 3. Bascule du contexte vers le nouveau schéma
             DB::statement("SET search_path TO \"$schemaName\", public");
 
-            // 4. Migration dynamique de la structure
+            // 3. Migration des tables vitales
             $this->migrateTenantTables($request->sector, $request->company_name);
 
-            // 5. Création de l'Owner (Admin Maître)
+            // 4. Création de l'Administrateur Maître
             DB::table('users')->insert([
                 'name'       => $request->admin_name,
                 'email'      => $request->admin_email,
@@ -99,13 +94,32 @@ class TenantController extends Controller
                 'updated_at' => now(),
             ]);
 
+            // 5. GÉNÉRATION DU MESSAGE DE BIENVENUE IA
+            $welcomeMessage = "Nexus Engine activé. Votre infrastructure est prête.";
+            try {
+                $pythonAiUrl = config('services.ai.url', 'https://ai-nexus.up.railway.app');
+                $aiResponse = Http::timeout(3)->post($pythonAiUrl . '/generate-welcome', [
+                    'company_name' => $request->company_name,
+                    'sector' => $request->sector
+                ]);
+
+                if ($aiResponse->successful()) {
+                    $welcomeMessage = $aiResponse->json()['message'];
+                }
+            } catch (\Exception $e) {
+                Log::warning("IA Welcome Service indisponible.");
+            }
+
             return response()->json([
                 'status'  => 'success',
-                'message' => "Ecosystème propulsé : " . $request->company_name,
+                'message' => $welcomeMessage,
                 'tenant'  => $slug,
+                'instruction' => 'Veuillez vous connecter pour accéder à votre espace.'
             ], 201);
 
         } catch (\Exception $e) {
+            // Rollback manuel en cas d'erreur de schéma
+            DB::statement("DROP SCHEMA IF EXISTS \"$schemaName\" CASCADE");
             Log::error("Échec Propulsion [$slug]: " . $e->getMessage());
             return response()->json([
                 'status'  => 'error',
@@ -114,12 +128,8 @@ class TenantController extends Controller
         }
     }
 
-    /**
-     * Migrations isolées et Configuration Initiale
-     */
     private function migrateTenantTables($sector, $fullName)
     {
-        // Table des utilisateurs
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -129,7 +139,6 @@ class TenantController extends Controller
             $table->timestamps();
         });
 
-        // Table de configuration (EaaS Config)
         Schema::create('tenant_configs', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();
@@ -137,7 +146,6 @@ class TenantController extends Controller
             $table->timestamps();
         });
 
-        // Insertion des métadonnées de l'instance
         DB::table('tenant_configs')->insert([
             ['key' => 'business_sector', 'value' => $sector, 'created_at' => now()],
             ['key' => 'display_name', 'value' => $fullName, 'created_at' => now()],
@@ -145,9 +153,6 @@ class TenantController extends Controller
         ]);
     }
 
-    /**
-     * Appel au service FastAPI pour valider le nom
-     */
     private function getAiInsights($name)
     {
         try {
@@ -163,12 +168,12 @@ class TenantController extends Controller
                 ], 404);
             }
         } catch (\Exception $e) {
-            Log::warning("IA Nexus Déconnectée.");
+            Log::warning("IA Nexus Offline.");
         }
 
         return response()->json([
             'exists'  => false,
-            'message' => "Instance non identifiée. Prêt pour initialisation."
+            'message' => "Identifiant disponible. Prêt pour propulsion."
         ], 404);
     }
 }
