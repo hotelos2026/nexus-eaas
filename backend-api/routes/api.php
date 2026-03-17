@@ -3,17 +3,33 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\TenantController;
 
-// Routes publiques (sans switch de schéma au départ)
+/*
+|--------------------------------------------------------------------------
+| Routes Publiques (Globales)
+|--------------------------------------------------------------------------
+*/
+
+// Création d'une nouvelle instance et d'un utilisateur admin
 Route::post('/register', [AuthController::class, 'register']);
 
-// Routes nécessitant l'identification du Tenant (via header X-Tenant)
+// Vérification d'existence pour le "Nexus Finder" du Frontend
+Route::get('/check-tenant/{name}', [TenantController::class, 'exists']);
+
+
+/*
+|--------------------------------------------------------------------------
+| Routes Isolées (Multi-Tenant)
+|--------------------------------------------------------------------------
+| Le middleware 'tenant' intercepte le header X-Tenant et switch le schéma DB
+*/
 Route::middleware(['tenant'])->group(function () {
 
-    // On déplace le login ici pour que le middleware switch 
-    // bien sur la base du client AVANT de chercher l'utilisateur
+    // Authentification spécifique à l'instance
     Route::post('/login', [AuthController::class, 'login']);
 
+    // Route de test de l'écosystème (DB + IA Service)
     Route::get('/test-ai', function () {
         $url = env('AI_SERVICE_URL');
         $currentTenant = config('database.connections.tenant.search_path');
