@@ -16,7 +16,7 @@ class TenantController extends Controller
     public function exists($name)
     {
         // 1. Normalisation stricte du nom (sécurité injection)
-        $slug = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $name));
+        $slug = strtolower(preg_replace('/[^a-zA-Z0-9-]/', '', $name));
         
         if (strlen($slug) < 3) {
             return response()->json([
