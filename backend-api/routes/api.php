@@ -7,47 +7,91 @@ use App\Http\Controllers\TenantController;
 
 /*
 |--------------------------------------------------------------------------
-| Routes Globales (Provisioning)
+| 1. ROUTES GLOBALES (NEXUS CORE)
 |--------------------------------------------------------------------------
+| Ces routes ne dépendent pas d'un schéma spécifique. Elles servent à 
+| l'administration centrale et à l'aiguillage initial.
 */
-
-// Cette route correspond à : backend-nexus.up.railway.app/api/tenants/provision
 Route::prefix('tenants')->group(function () {
-    Route::post('/provision', [TenantController::class, 'provision']); // CHANGÉ ICI
+    // Création d'une nouvelle instance (Provisioning)
+    Route::post('/provision', [TenantController::class, 'provision']);
+    
+    // Vérification d'existence (utilisé par le Front pour valider le slug)
+    Route::get('/check/{slug}', [TenantController::class, 'exists']);
 });
-
-// Vérification d'existence pour le "Nexus Finder"
-Route::get('/check-tenant/{slug}', [TenantController::class, 'exists']);
 
 
 /*
 |--------------------------------------------------------------------------
-| Routes Multi-Tenant (Isolées)
+| 2. ROUTES MULTI-TENANT (ISOLÉES PAR SCHÉMA)
 |--------------------------------------------------------------------------
+| Toutes ces routes passent par le middleware 'tenant' qui bascule 
+| dynamiquement la connexion DB vers le schéma de l'école.
 */
 Route::middleware(['tenant'])->group(function () {
 
+    /**
+     * A. ACCÈS PUBLIC À L'INSTANCE
+     * Portails de connexion spécifiques à l'école.
+     */
     Route::post('/login', [AuthController::class, 'login']);
 
-    Route::get('/test-ai', function () {
-        $url = env('AI_SERVICE_URL');
-        $currentTenant = config('database.connections.tenant.search_path') ?? 'default';
-        
-        try {
-            $response = Http::withHeaders([
-                'X-Instance-Context' => $currentTenant
-            ])->get($url . '/');
 
-            return [
-                'status' => 'Nexus Link Active',
-                'instance' => $currentTenant,
-                'ai_response' => $response->json()
-            ];
-        } catch (\Exception $e) {
+    /**
+     * B. ACCÈS PROTÉGÉ (AUTH:SANCTUM)
+     * L'utilisateur doit être authentifié DANS son schéma d'école.
+     */
+    Route::middleware(['auth:sanctum'])->group(function () {
+        
+        // Profil de l'utilisateur connecté
+        Route::get('/user', function (\Illuminate\Http\Request $request) {
             return response()->json([
-                'status' => 'AI Service Offline',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+                'user' => $request->user(),
+                'tenant' => $request->input('tenant') // Injecté par IdentifyTenant
+            ]);
+        });
+
+        // Déconnexion (Révocation du token Sanctum)
+        Route::post('/logout', [AuthController::class, 'logout']);
+
+        /**
+         * AI NEXUS LINK SERVICE
+         * Route de communication avec le micro-service IA.
+         */
+        Route::get('/test-ai', function () {
+            $url = env('AI_SERVICE_URL', 'http://localhost:5000');
+            // Récupération du schéma actif pour le contexte IA
+            $currentSchema = config('database.connections.tenant.search_path');
+            
+            try {
+                $response = Http::timeout(5)
+                    ->withHeaders([
+                        'X-Instance-Context' => $currentSchema,
+                        'Accept' => 'application/json'
+                    ])->get($url . '/');
+
+                return response()->json([
+                    'status'   => 'Nexus AI Link Active',
+                    'instance' => $currentSchema,
+                    'payload'  => $response->successful() ? $response->json() : 'AI service returned error'
+                ]);
+
+            } catch (\Exception $e) {
+                return response()->json([
+                    'status' => 'AI Service Offline',
+                    'error'  => $e->getMessage(),
+                    'hint'   => 'Check if the AI micro-service is running on ' . $url
+                ], 503);
+            }
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | AJOUTE TES ROUTES DE MODULES ICI (Scolarité, Finance, etc.)
+        |------------------------------------------------------------------
+        */
+        // Route::get('/students', [StudentController::class, 'index']);
+        // Route::post('/modules/activate', [ModuleController::class, 'activate']);
+
     });
 });
