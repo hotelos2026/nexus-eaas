@@ -13,27 +13,8 @@ use Illuminate\Support\Facades\Artisan;
 class AuthController extends Controller
 {
     /**
-     * Bascule le contexte vers le schéma du tenant.
-     * Utilise les doubles quotes pour protéger le nom du schéma PostgreSQL.
-     */
-    private function switchToTenantSchema($domain)
-    {
-        // On suit la nomenclature de ton middleware : database_schema (ex: tenant_apple)
-        $schemaName = 'tenant_' . strtolower($domain);
-        
-        config(['database.connections.tenant.search_path' => $schemaName]);
-        
-        DB::purge('tenant');
-        DB::reconnect('tenant');
-        
-        // Fix PDO pour forcer le search_path
-        DB::connection('tenant')->statement("SET search_path TO \"$schemaName\", public");
-        
-        return $schemaName;
-    }
-
-    /**
-     * Inscription : Provisionne une instance Nexus et crée l'admin.
+     * INSCRIPTION (Provisioning)
+     * Crée le tenant dans le Core et génère son infrastructure SQL isolée.
      */
     public function register(Request $request)
     {
@@ -50,7 +31,7 @@ class AuthController extends Controller
                 $domain = strtolower($request->domain);
                 $schemaName = 'tenant_' . $domain;
 
-                // 1. Création du Tenant dans le Core (Schéma Public)
+                // 1. Création du registre central (Schéma Public)
                 $tenant = Tenant::create([
                     'name' => $request->company_name,
                     'domain' => $domain,
@@ -58,25 +39,26 @@ class AuthController extends Controller
                     'is_active' => true
                 ]);
 
-                // 2. CRÉATION PHYSIQUE DU SCHÉMA DANS POSTGRES
+                // 2. Création physique du schéma PostgreSQL
                 DB::statement("CREATE SCHEMA IF NOT EXISTS \"$schemaName\"");
 
-                // 3. MIGRATION DES TABLES DANS LE NOUVEAU SCHÉMA
-                // On force la connexion 'tenant' pour Artisan
-                $this->switchToTenantSchema($domain);
-                
+                // 3. Exécution des migrations pour le nouveau tenant
+                // On configure temporairement la connexion pour Artisan
+                config(['database.connections.tenant.search_path' => $schemaName]);
+                DB::purge('tenant');
+
                 Artisan::call('migrate', [
                     '--database' => 'tenant',
-                    '--path' => 'database/migrations/tenant', // Dossier spécifique si existant
-                    '--force' => true,
+                    '--path'     => 'database/migrations', // Utilise tes migrations standards
+                    '--force'    => true,
                 ]);
 
-                // 4. Création de l'Administrateur dans le nouveau schéma
+                // 4. Création de l'utilisateur Admin dans le nouveau schéma
                 $user = User::on('tenant')->create([
-                    'name' => $request->name,
-                    'email' => $request->email,
+                    'name'     => $request->name,
+                    'email'    => $request->email,
                     'password' => Hash::make($request->password),
-                    'role' => 'owner'
+                    'role'     => 'owner'
                 ]);
 
                 return response()->json([
@@ -84,7 +66,6 @@ class AuthController extends Controller
                     'message' => 'Nexus Engine : Instance propulsée avec succès !',
                     'data'    => [
                         'tenant' => $tenant->domain,
-                        'schema' => $schemaName,
                         'admin'  => $user->email
                     ]
                 ], 201);
@@ -93,47 +74,42 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             Log::error("Échec Propulsion Nexus [$request->domain]: " . $e->getMessage());
             return response()->json([
-                'error'   => 'Échec de la propulsion',
+                'error'   => 'Échec de la propulsion infrastructure',
                 'details' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Connexion : Authentifie l'utilisateur sur son instance.
+     * CONNEXION
+     * Authentifie l'utilisateur sur le schéma déjà sélectionné par le Middleware.
      */
     public function login(Request $request)
     {
         $request->validate([
             'email'    => 'required|email',
             'password' => 'required',
-            'tenant'   => 'required' 
         ]);
 
         try {
-            // 1. Bascule sur le schéma demandé
-            $this->switchToTenantSchema($request->tenant);
-
-            // 2. Recherche de l'utilisateur
-            $user = User::on('tenant')->where('email', $request->email)->first();
+            // Le Middleware 'IdentifyTenant' a déjà fait le switch de connexion.
+            // On cherche l'utilisateur directement dans le schéma actif.
+            $user = User::where('email', $request->email)->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
                 return response()->json([
-                    'message' => 'Accès refusé : Identifiants ou instance incorrects.'
+                    'message' => 'Accès refusé : Identifiants incorrects sur cette instance.'
                 ], 401);
             }
 
-            // 3. Génération du Token via Sanctum (sur la connexion tenant)
-            // On s'assure que le modèle est bien lié à la connexion 'tenant'
-            $user->setConnection('tenant');
+            // Génération du Token Sanctum
             $token = $user->createToken('nexus_auth_token')->plainTextToken;
 
             return response()->json([
-                'status' => 'success',
+                'status'       => 'success',
                 'access_token' => $token,
-                'token_type' => 'Bearer',
-                'tenant' => $request->tenant,
-                'user' => [
+                'token_type'   => 'Bearer',
+                'user'         => [
                     'name'  => $user->name,
                     'email' => $user->email,
                     'role'  => $user->role
@@ -142,21 +118,22 @@ class AuthController extends Controller
 
         } catch (\Exception $e) {
             Log::error("Erreur Login Nexus: " . $e->getMessage());
-            return response()->json(['error' => 'Erreur Nexus OS'], 500);
+            return response()->json([
+                'error' => 'Erreur interne Nexus OS',
+                'debug' => env('APP_DEBUG') ? $e->getMessage() : null
+            ], 500);
         }
     }
 
     /**
-     * Déconnexion : Révoque le token.
+     * DÉCONNEXION
      */
     public function logout(Request $request)
     {
         try {
-            // Le middleware 'auth:sanctum' a déjà identifié l'utilisateur
             $request->user()->currentAccessToken()->delete();
-
             return response()->json([
-                'status' => 'success',
+                'status'  => 'success',
                 'message' => 'Session Nexus terminée.'
             ]);
         } catch (\Exception $e) {

@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { 
   BookOpen, Bus, Coffee, GraduationCap, Calculator, 
   ShieldCheck, CheckCircle2, Star, X, Smartphone,
-  Zap, Bell, Globe, LayoutGrid 
+  Zap, Bell, Globe, LayoutGrid, Loader2
 } from 'lucide-react';
 
 const modulesData = [
@@ -23,6 +24,9 @@ const modulesData = [
 ];
 
 function DashboardContent() {
+  const searchParams = useSearchParams();
+  const tenant = searchParams.get('tenant'); // Récupération du tenant pour l'isolation future
+
   const [modules, setModules] = useState(modulesData);
   const [selectedModule, setSelectedModule] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('Tous');
@@ -49,8 +53,9 @@ function DashboardContent() {
   };
 
   return (
-    <>
-      <div className="bg-white border-b border-slate-200 px-6 py-2 flex items-center justify-between sticky top-0 z-30">
+    <div className="min-h-screen bg-slate-50">
+      {/* HEADER DASHBOARD */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto scrollbar-hide">
           {['Tous', 'ACADÉMIQUE', 'LOGISTIQUE', 'FINANCE', 'SÉCURITÉ'].map(cat => (
             <button 
@@ -62,8 +67,9 @@ function DashboardContent() {
             </button>
           ))}
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase italic">
-           App Store Madagascar (MGA)
+        <div className="hidden sm:flex flex-col items-end">
+          <p className="text-[10px] font-black text-slate-400 uppercase italic leading-none">Nexus OS App Store</p>
+          <p className="text-[8px] font-bold text-indigo-400 uppercase mt-1 tracking-widest">{tenant ? `Node: ${tenant}` : 'Public Instance'}</p>
         </div>
       </div>
 
@@ -126,18 +132,19 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* MODAL DE PAIEMENT / ACTIVATION */}
       {selectedModule && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setSelectedModule(null)}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setSelectedModule(null)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-8">
               <div className="flex justify-between items-start mb-6">
-                 <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center italic font-black">Ar</div>
+                 <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center italic font-black text-xs">MGA</div>
                  <button onClick={() => setSelectedModule(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20}/></button>
               </div>
 
-              <h2 className="text-xl font-black text-slate-900 leading-tight">Activer {selectedModule.name}</h2>
-              <p className="text-slate-400 text-xs mt-1 font-bold uppercase tracking-widest">{selectedModule.cat}</p>
+              <h2 className="text-xl font-black text-slate-900 leading-tight uppercase">Activer {selectedModule.name}</h2>
+              <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest">{selectedModule.cat}</p>
 
               {paymentStep === 1 ? (
                 <div className="mt-8 space-y-3">
@@ -170,35 +177,40 @@ function DashboardContent() {
                   <button 
                     onClick={confirmActivation}
                     disabled={phoneNumber.length < 10}
-                    className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm hover:bg-black transition-all disabled:opacity-30 flex items-center justify-center gap-3"
+                    className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm hover:bg-black transition-all disabled:opacity-30 flex items-center justify-center gap-3 uppercase"
                   >
                     Confirmer & Activer
                   </button>
-                  <button onClick={() => setPaymentStep(1)} className="w-full mt-2 text-slate-400 text-[10px] font-bold uppercase py-2 hover:text-slate-600 transition-colors">Retour</button>
+                  <button onClick={() => setPaymentStep(1)} className="w-full mt-2 text-slate-400 text-[10px] font-bold uppercase py-2 hover:text-slate-600 transition-colors tracking-tighter">Retour au choix de l'opérateur</button>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
 function PaymentOption({ color, label, onClick, active }: any) {
   return (
     <div onClick={onClick} className={`flex items-center justify-between p-4 border-2 rounded-2xl cursor-pointer transition-all ${color} ${active ? 'scale-[1.02] shadow-md ring-2 ring-current ring-offset-2' : 'opacity-70 hover:opacity-100'}`}>
-       <span className="font-black text-sm">{label}</span>
-       <div className={`w-5 h-5 rounded-full border-2 border-current flex items-center justify-center`}>
+        <span className="font-black text-xs uppercase tracking-tight">{label}</span>
+        <div className={`w-5 h-5 rounded-full border-2 border-current flex items-center justify-center`}>
           {active && <div className="w-2 h-2 bg-current rounded-full"></div>}
-       </div>
+        </div>
     </div>
   );
 }
 
-export default function Dashboard() {
+export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="h-full flex items-center justify-center text-slate-400 text-[10px] uppercase font-black tracking-widest">Chargement de l'App Store...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-400">
+        <Loader2 className="animate-spin mb-4 text-indigo-500" size={32} />
+        <p className="text-[10px] uppercase font-black tracking-[0.3em] animate-pulse">Synchronisation avec Nexus OS...</p>
+      </div>
+    }>
       <DashboardContent />
     </Suspense>
   );

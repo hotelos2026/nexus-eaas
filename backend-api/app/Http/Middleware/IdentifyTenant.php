@@ -13,78 +13,68 @@ class IdentifyTenant
 {
     /**
      * Gère l'identification de l'instance Nexus et l'aiguillage vers le bon schéma PostgreSQL.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure  $next
-     * @return \Symfony\Component\HttpFoundation\Response
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Extraction de l'identifiant (Priorité au Header X-Tenant pour le Front Next.js)
+        // 1. Extraction de l'identifiant (Priorité au Header X-Tenant pour Next.js)
         $tenantDomain = $request->header('X-Tenant') ?? $request->query('tenant');
 
         if (!$tenantDomain) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Identifiant Nexus (X-Tenant) manquant dans la requête.'
+                'message' => 'Identifiant Nexus (X-Tenant) manquant.'
             ], 403);
         }
 
         $tenantDomain = strtolower(trim($tenantDomain));
 
-        // 2. Recherche du tenant dans la connexion 'pgsql' (Schéma Core / Public)
-        // On récupère le nom du schéma de base de données associé au domaine
-        $tenant = DB::connection('pgsql')
-            ->table('tenants')
-            ->where('domain', $tenantDomain)
-            ->where('is_active', true) // Sécurité : On vérifie si l'école n'est pas suspendue
-            ->first();
-
-        if (!$tenant) {
-            return response()->json([
-                'status' => 'error',
-                'message' => "Instance Nexus [$tenantDomain] non identifiée ou inactive."
-            ], 404);
-        }
-
         try {
+            // --- ÉTAPE CRUCIALE : Forcer la recherche dans le schéma PUBLIC ---
+            // On s'assure que la connexion principale pointe sur 'public' pour trouver la table 'tenants'
+            Config::set('database.connections.pgsql.search_path', 'public');
+            DB::purge('pgsql'); 
+
+            $tenant = DB::connection('pgsql')
+                ->table('tenants')
+                ->where('domain', $tenantDomain)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$tenant) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Instance Nexus [$tenantDomain] non identifiée ou inactive."
+                ], 404);
+            }
+
             $schemaName = $tenant->database_schema;
 
-            // 3. Configuration dynamique de la connexion 'tenant'
-            // On clone la config par défaut mais en changeant le search_path
+            // 2. Configuration dynamique de la connexion 'tenant'
             $config = Config::get('database.connections.pgsql');
             $config['search_path'] = $schemaName;
             
             Config::set('database.connections.tenant', $config);
             
-            // 4. Reset des connexions existantes pour appliquer le nouveau schéma
+            // 3. Purge et Reconnexion pour appliquer le schéma
             DB::purge('tenant');
-            DB::reconnect('tenant');
-
-            // 5. PROTECTION CRUCIALE : SET search_path au niveau PDO
-            // On utilise quoteIdentifier pour éviter toute injection SQL sur le nom du schéma
-            $pdo = DB::connection('tenant')->getPdo();
+            
+            // 4. SET search_path au niveau PDO (Double sécurité pour PostgreSQL)
             $quotedSchema = '"' . str_replace('"', '""', $schemaName) . '"';
-            $pdo->exec("SET search_path TO $quotedSchema, public");
+            DB::connection('tenant')->getPdo()->exec("SET search_path TO $quotedSchema, public");
 
-            // 6. Définir 'tenant' comme connexion par défaut pour tout le cycle de vie de la requête
+            // 5. Définir 'tenant' comme connexion par défaut pour cette requête
             DB::setDefaultConnection('tenant');
 
-            // 7. Partage des données du tenant dans l'objet Request
-            // Utile pour récupérer l'ID de l'école ou le nom partout dans Laravel via $request->get('tenant')
+            // 6. Injecter l'objet tenant dans la requête pour usage ultérieur
             $request->attributes->add(['tenant' => $tenant]);
 
-            // Logger l'accès (Optionnel, utile en debug)
-            // Log::debug("Nexus Switch: [$tenantDomain] -> Schema: [$schemaName]");
-
         } catch (\Exception $e) {
-            Log::critical("Échec critique de bascule Nexus pour [$tenantDomain] : " . $e->getMessage(), [
-                'exception' => $e
-            ]);
+            Log::critical("Échec bascule Nexus [$tenantDomain] : " . $e->getMessage());
             
             return response()->json([
                 'status' => 'error',
-                'message' => 'Erreur technique d\'aiguillage infrastructure.'
+                'message' => 'Erreur technique d\'aiguillage infrastructure.',
+                'debug' => env('APP_DEBUG') ? $e->getMessage() : null
             ], 500);
         }
 
