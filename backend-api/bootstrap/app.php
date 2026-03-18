@@ -12,10 +12,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // 1. Alias pour tes routes
         $middleware->alias([
             'tenant' => \App\Http\Middleware\IdentifyTenant::class,
         ]);
+
+        // 2. Priorité corrigée pour Laravel 12
+        // On place IdentifyTenant TOUT EN HAUT pour que Sanctum 
+        // sache dans quel schéma chercher l'utilisateur.
+        $middleware->priority([
+            \App\Http\Middleware\IdentifyTenant::class,
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Auth\Middleware\Authenticate::class, // <-- La classe correcte ici
+            \Illuminate\Routing\Middleware\ThrottleRequests::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class, // <-- Correction du namespace
+            \Illuminate\Auth\Middleware\Authorize::class,
+        ]);
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
+    ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();
