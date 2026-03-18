@@ -26,7 +26,7 @@ class TenantController extends Controller
             ], 422);
         }
 
-        // On vérifie d'abord dans le registre central (plus rapide et propre)
+        // Vérification dans le registre central (schéma public)
         $tenant = DB::connection('pgsql')->table('tenants')->where('domain', $slug)->first();
 
         if ($tenant) {
@@ -37,7 +37,7 @@ class TenantController extends Controller
             ], 200);
         }
 
-        // Si n'existe pas, appel IA pour message marketing
+        // Si disponible, on demande une analyse marketing à l'IA
         return $this->getAiInsights($name);
     }
 
@@ -59,32 +59,33 @@ class TenantController extends Controller
         $schemaName = "tenant_" . $slug;
 
         try {
-            // 1. Sécurité : Vérifier si le schéma existe
+            // 1. Sécurité : Vérifier si le schéma existe déjà
             $check = DB::select("SELECT schema_name FROM information_schema.schemata WHERE schema_name = ?", [$schemaName]);
             if (!empty($check)) {
                 return response()->json(['status' => 'error', 'message' => "L'identifiant '$slug' est déjà réservé."], 422);
             }
 
             // 2. ENREGISTREMENT DANS LE REGISTRE CENTRAL (Public)
-            // Indispensable pour que le middleware IdentifyTenant fonctionne
+            // On enregistre le SECTOR ici pour le DiscoveryService
             DB::connection('pgsql')->table('tenants')->insert([
                 'name' => $request->company_name,
                 'domain' => $slug,
                 'database_schema' => $schemaName,
+                'sector' => $request->sector, // <--- CRUCIAL pour ton App Store
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            // 3. Création de l'infrastructure SQL
+            // 3. Création de l'infrastructure SQL (Nouveau Schéma)
             DB::statement("CREATE SCHEMA \"$schemaName\"");
             
-            // On force la connexion sur le nouveau schéma
+            // On bascule la session actuelle sur le nouveau schéma
             DB::statement("SET search_path TO \"$schemaName\", public");
 
-            // 4. Migration des tables vitales (Users, Configs, Tokens)
+            // 4. Migration des tables vitales (Users, Configs, Sanctum)
             $this->migrateTenantTables($request->sector, $request->company_name);
 
-            // 5. Création de l'Administrateur Maître (Dans le nouveau schéma)
+            // 5. Création du Master Admin (Dans le nouveau schéma)
             DB::table('users')->insert([
                 'name'       => $request->admin_name,
                 'email'      => $request->admin_email,
@@ -94,7 +95,7 @@ class TenantController extends Controller
                 'updated_at' => now(),
             ]);
 
-            // 6. GÉNÉRATION DU MESSAGE DE BIENVENUE IA
+            // 6. GÉNÉRATION DU BIENVENUE IA
             $welcomeMessage = "Nexus Engine activé. Votre infrastructure est prête.";
             try {
                 $pythonAiUrl = config('services.ai.url', 'https://ai-nexus.up.railway.app');
@@ -114,28 +115,28 @@ class TenantController extends Controller
                 'status'      => 'success',
                 'message'     => $welcomeMessage,
                 'tenant'      => $slug,
-                'instruction' => 'Veuillez vous connecter pour accéder à votre espace.'
+                'instruction' => 'Connectez-vous pour configurer vos modules.'
             ], 201);
 
         } catch (\Exception $e) {
-            // Rollback : On nettoie tout en cas d'erreur
+            // ROLLBACK : Nettoyage total si une étape échoue
             DB::connection('pgsql')->table('tenants')->where('domain', $slug)->delete();
             DB::statement("DROP SCHEMA IF EXISTS \"$schemaName\" CASCADE");
             
             Log::error("Échec Propulsion [$slug]: " . $e->getMessage());
             return response()->json([
                 'status'  => 'error',
-                'message' => "Erreur de déploiement infrastructure : " . $e->getMessage()
+                'message' => "Erreur critique : " . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Migration manuelle des tables pour le nouveau schéma
+     * Migration manuelle (Bootstrap de l'instance)
      */
     private function migrateTenantTables($sector, $fullName)
     {
-        // Table des utilisateurs
+        // Table des utilisateurs isolée
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -145,7 +146,7 @@ class TenantController extends Controller
             $table->timestamps();
         });
 
-        // Table de configuration du tenant
+        // Table de configuration locale (Store les préférences du module)
         Schema::create('tenant_configs', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();
@@ -153,7 +154,7 @@ class TenantController extends Controller
             $table->timestamps();
         });
 
-        // CRUCIAL : Table pour Sanctum (Authentification API)
+        // Jetons de connexion (Sanctum) - Obligatoire pour le login
         Schema::create('personal_access_tokens', function (Blueprint $table) {
             $table->id();
             $table->string('tokenable_type');
@@ -167,30 +168,21 @@ class TenantController extends Controller
             $table->index(['tokenable_type', 'tokenable_id']);
         });
 
-        // Insertion des données initiales
+        // Insertion du contexte métier dans le schéma local
         DB::table('tenant_configs')->insert([
             ['key' => 'business_sector', 'value' => $sector, 'created_at' => now()],
             ['key' => 'display_name', 'value' => $fullName, 'created_at' => now()],
-            ['key' => 'is_active', 'value' => 'true', 'created_at' => now()],
         ]);
     }
 
-    /**
-     * Appel IA pour analyser le nom du tenant s'il est libre
-     */
     private function getAiInsights($name)
     {
         try {
             $pythonAiUrl = config('services.ai.url', 'https://ai-nexus.up.railway.app');
-            $response = Http::timeout(3)->post($pythonAiUrl . '/analyze-tenant', [
-                'tenant_name' => $name
-            ]);
+            $response = Http::timeout(3)->post($pythonAiUrl . '/analyze-tenant', ['tenant_name' => $name]);
 
             if ($response->successful()) {
-                return response()->json([
-                    'exists'  => false,
-                    'message' => $response->json()['analysis']
-                ], 404);
+                return response()->json(['exists' => false, 'message' => $response->json()['analysis']], 404);
             }
         } catch (\Exception $e) {
             Log::warning("IA Nexus Offline.");

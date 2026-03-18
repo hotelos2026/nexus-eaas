@@ -1,0 +1,9 @@
+{
+    "id": "school_manager",
+    "name": "School Manager",
+    "category": "Academic",
+    "compatible_sectors": ["Education", "Academic"],
+    "icon": "GraduationCap",
+    "description": "Gestion des élèves, classes et bulletins."
+}
+

@@ -1,0 +1,8 @@
+{
+    "id": "hospital_manager",
+    "name": "Hospitality Manager",
+    "category": "Healthcare",
+    "compatible_sectors": ["Medical", "Hospitality"],
+    "icon": "Activity",
+    "description": "Suivi des patients et dossiers médicaux."
+}
