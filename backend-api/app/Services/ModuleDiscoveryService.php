@@ -6,9 +6,6 @@ use Illuminate\Support\Facades\File;
 
 class ModuleDiscoveryService
 {
-    /**
-     * Récupère les modules, avec un filtre optionnel par secteur.
-     */
     public function getAllAvailableModules($filterSector = null)
     {
         $modulesPath = base_path('Modules');
@@ -18,44 +15,36 @@ class ModuleDiscoveryService
         }
 
         $modules = [];
+        // On scanne directement les dossiers à la racine de /Modules
         $directories = File::directories($modulesPath);
 
-        foreach ($directories as $dirPath) {
-            $dirName = basename($dirPath); // Ex: "Logistique", "Academique", "Shared"
+        foreach ($directories as $modulePath) {
+            $jsonPath = $modulePath . '/module.json';
             
-            // On vérifie si on doit filtrer par secteur
-            // On laisse toujours passer les modules du dossier 'Shared' (outils communs)
-            if ($filterSector && !in_array($dirName, [$filterSector, 'Shared', 'shared'])) {
-                continue;
-            }
+            if (File::exists($jsonPath)) {
+                $config = json_decode(File::get($jsonPath), true);
+                
+                // On récupère la catégorie dans le JSON (ex: "Academique" ou "Logistique")
+                $moduleCategory = $config['category'] ?? 'Shared';
 
-            // CAS 1 : module.json à la racine du secteur
-            $rootJson = $dirPath . '/module.json';
-            if (File::exists($rootJson)) {
-                $modules[] = $this->parseModule($rootJson, $dirName, $dirPath);
-            }
-
-            // CAS 2 : module.json dans un sous-dossier (ex: Logistique/FleetControl)
-            $subDirs = File::directories($dirPath);
-            foreach ($subDirs as $subPath) {
-                $subJson = $subPath . '/module.json';
-                if (File::exists($subJson)) {
-                    $modules[] = $this->parseModule($subJson, $dirName, $subPath);
+                // FILTRE : On laisse passer si :
+                // 1. Aucun filtre n'est demandé
+                // 2. OU le module est "Shared"
+                // 3. OU le module correspond au secteur du client (ex: "Logistique")
+                if ($filterSector && !in_array($moduleCategory, [$filterSector, 'Shared'])) {
+                    continue;
                 }
+
+                $modules[] = [
+                    'id'          => basename($modulePath), // Identifiant unique (nom du dossier)
+                    'name'        => $config['name'] ?? basename($modulePath),
+                    'category'    => $moduleCategory,
+                    'description' => $config['description'] ?? '',
+                    'icon'        => $config['icon'] ?? 'Package',
+                ];
             }
         }
 
         return $modules;
-    }
-
-    private function parseModule($jsonPath, $category, $fullPath)
-    {
-        $config = json_decode(File::get($jsonPath), true);
-        return [
-            'name'        => $config['name'] ?? basename($fullPath),
-            'description' => $config['description'] ?? 'Aucune description',
-            'category'    => $category, 
-            'path'        => $fullPath
-        ];
     }
 }
