@@ -1,1 +1,13 @@
-{"name": "Point de Vente", "category": "Logistique"}
+{
+    "id": "POS",
+    "name": "Point de Vente Pro",
+    "category": "Logistique",
+    "description": "Caisse tactile complète avec gestion des stocks.",
+    "price_per_month": 50000,
+    "currency": "Ar",
+    "is_promo": true,
+    "promo_price_per_month": 30000,
+    "icon": "ShoppingCart",
+    "color": "#6366f1",
+    "status": "available"
+}
