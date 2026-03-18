@@ -80,49 +80,42 @@ class AuthController extends Controller
      * Connexion : Authentifie l'utilisateur sur son instance spécifique.
      */
     public function login(Request $request)
-    {
-        $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
-            'tenant'   => 'required' // CRUCIAL: Le frontend doit envoyer "iscamen"
+{
+    $request->validate([
+        'email'    => 'required|email',
+        'password' => 'required',
+        'tenant'   => 'required' 
+    ]);
+
+    try {
+        // 1. On s'assure que le schéma existe physiquement
+        $schemaName = 'tenant_' . strtolower($request->tenant);
+        
+        // 2. Bascule forcée
+        $this->switchToTenantSchema($request->tenant);
+
+        // 3. On cherche l'utilisateur sur la connexion 'tenant'
+        // On utilise DB::connection('tenant') pour être certain de l'isolation
+        $user = DB::connection('tenant')->table('users')->where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json(['message' => 'Accès refusé : Identifiants ou instance incorrects.'], 401);
+        }
+
+        // 4. On récupère l'objet User complet pour Sanctum
+        $userModel = User::on('tenant')->find($user->id);
+        $userModel->setConnection('tenant'); // Indispensable pour Sanctum
+        
+        $token = $userModel->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'access_token' => $token,
+            'tenant' => $request->tenant,
+            'user' => ['name' => $user->name, 'email' => $user->email]
         ]);
 
-        try {
-            // 1. Bascule dynamique vers le schéma demandé
-            $this->switchToTenantSchema($request->tenant);
-
-            // 2. On cherche l'utilisateur UNIQUEMENT dans ce schéma
-            $user = User::on('tenant')->where('email', $request->email)->first();
-
-            if (!$user || !Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    'message' => 'Identifiants invalides pour l\'espace ' . $request->tenant
-                ], 401);
-            }
-
-            // 3. CRUCIAL : Forcer le modèle à utiliser la connexion 'tenant' pour Sanctum
-            $user->setConnection('tenant');
-
-            // 4. Génération du Token (Sera stocké dans tenant_iscamen.personal_access_tokens)
-            $token = $user->createToken('auth_token')->plainTextToken;
-
-            return response()->json([
-                'message' => 'Connexion réussie au Nexus OS',
-                'access_token' => $token,
-                'token_type' => 'Bearer',
-                'tenant' => $request->tenant,
-                'user' => [
-                    'name' => $user->name,
-                    'email' => $user->email,
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error("Crash Login: " . $e->getMessage());
-            return response()->json([
-                'error' => 'Erreur lors de la connexion',
-                'details' => "L'espace '" . $request->tenant . "' est peut-être introuvable."
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Erreur Nexus OS', 'details' => $e->getMessage()], 500);
     }
+}
 }

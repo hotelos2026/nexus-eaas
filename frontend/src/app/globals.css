@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Configuration des variables globales */
+/* Variables globales */
 :root {
   --background: #050505;
   --foreground: #ededed;
@@ -10,22 +10,35 @@
   --font-mono: var(--font-geist-mono), monospace;
 }
 
-/* Définition de l'animation pour la popup IA */
-@keyframes shrink {
-  from { width: 100%; }
-  to { width: 0%; }
-}
-
-/* Classe utilitaire pour l'IA Notification */
-.animate-shrink {
-  animation: shrink 5s linear forwards;
-}
-
-/* Styles de base */
+/* Base */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Components */
+@layer components {
+  .input-premium {
+    /* AJOUT : text-white et cursor-text pour être sûr */
+    @apply w-full bg-black/60 border border-white/10 p-4 rounded-2xl 
+    focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30 
+    outline-none transition-all text-sm text-white placeholder:text-gray-600
+    relative z-50 cursor-text; 
+  }
+
+  .btn-primary {
+    @apply w-full bg-linear-to-r from-purple-600 to-purple-500 
+    p-4 rounded-2xl font-black text-xs uppercase tracking-widest 
+    hover:opacity-90 transition flex items-center justify-center gap-2 
+    disabled:opacity-30 cursor-pointer;
+  }
+
+  .btn-secondary {
+    @apply p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest 
+    border border-white/10 text-gray-400 hover:bg-white/5 
+    transition flex items-center justify-center gap-2 cursor-pointer;
+  }
 }

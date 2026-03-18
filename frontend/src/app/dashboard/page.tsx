@@ -3,168 +3,182 @@
 import { useEffect, useState, Suspense } from 'react';
 import api from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Rocket, Bot, Database, CheckCircle, LogOut, User, ShieldCheck } from 'lucide-react';
+import {
+  LayoutDashboard, Database, Bot, Users,
+  Settings, LogOut, Rocket, BarChart3
+} from 'lucide-react';
 
 function DashboardContent() {
-    const [data, setData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const router = useRouter();
-    const searchParams = useSearchParams();
-    
-    // Récupération du tenant depuis l'URL ou le localStorage
-    const tenant = searchParams.get('tenant') || typeof window !== 'undefined' ? localStorage.getItem('current_tenant') : null;
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const token = localStorage.getItem('nexus_token');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tenant =
+    searchParams.get('tenant') ||
+    (typeof window !== 'undefined'
+      ? localStorage.getItem('current_tenant')
+      : null);
 
-        // Sécurité : redirection si pas de session
-        if (!token) {
-            router.push(`/login?tenant=${tenant || ''}`);
-            return;
-        }
+  useEffect(() => {
+    const token = localStorage.getItem('nexus_token');
 
-        const fetchData = async () => {
-            try {
-                // L'intercepteur de src/lib/api.ts s'occupe du X-Tenant et du Bearer Token
-                const response = await api.get('/test-ai');
-                setData(response.data);
-            } catch (error) {
-                console.error("Erreur de connexion au Backend", error);
-                // Si le token est expiré ou invalide (401)
-                localStorage.removeItem('nexus_token');
-                router.push(`/login?tenant=${tenant}`);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-    }, [router, tenant]);
-
-    const handleLogout = () => {
-        localStorage.removeItem('nexus_token');
-        router.push(`/login?tenant=${tenant}`);
-    };
-
-    if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] text-white">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-                <p className="text-gray-400 animate-pulse">Synchronisation avec l'instance {tenant}...</p>
-            </div>
-        );
+    if (!token) {
+      router.push(`/login?tenant=${tenant || ''}`);
+      return;
     }
 
+    const fetchData = async () => {
+      try {
+        // On passe le tenant en paramètre ou en Header (selon ton choix Backend)
+        const res = await api.get(`/test-ai?tenant=${tenant}`); 
+        setData(res.data);
+      } catch (err) {
+        console.error("Session Nexus expirée ou invalide");
+        router.push(`/login?tenant=${tenant}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [tenant, router]);
+
+  const logout = () => {
+    localStorage.clear();
+    router.push(`/login?tenant=${tenant}`);
+  };
+
+  if (loading) {
     return (
-        <div className="min-h-screen bg-[#050505] text-white font-sans">
-            {/* Barre de navigation supérieure */}
-            <nav className="border-b border-gray-800 bg-[#0a0a0a]/50 backdrop-blur-md sticky top-0 z-10">
-                <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <Rocket className="text-purple-500" size={24} />
-                        <span className="font-bold text-xl tracking-tight">NEXUS <span className="text-purple-500 text-xs font-mono">v1.0</span></span>
-                    </div>
-                    
-                    <div className="flex items-center gap-6">
-                        <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full text-xs font-medium">
-                            <CheckCircle size={14} /> Système Connecté
-                        </div>
-                        <button 
-                            onClick={handleLogout}
-                            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-medium"
-                        >
-                            <LogOut size={18} />
-                        </button>
-                    </div>
-                </div>
-            </nav>
-
-            <main className="max-w-7xl mx-auto p-8">
-                {/* Header Section */}
-                <div className="mb-10">
-                    <h2 className="text-3xl font-bold bg-linear-to-r from-white to-gray-500 bg-clip-text text-transparent mb-2">
-                        Bienvenue dans votre Dashboard
-                    </h2>
-                    <p className="text-gray-500">
-                        Gestionnaire multi-instance pour le domaine : <span className="text-purple-400 font-mono">{tenant}</span>
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Carte Instance BDD */}
-                    <div className="bg-[#0a0a0a] p-6 rounded-2xl border border-gray-800 hover:border-purple-500/50 transition-all group">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-purple-500/10 rounded-lg group-hover:bg-purple-500/20 transition-colors">
-                                <Database className="text-purple-500" size={20} />
-                            </div>
-                            <h3 className="font-semibold text-gray-200">Base de Données</h3>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs text-gray-500 uppercase tracking-widest">Schéma Actif</p>
-                            <div className="flex items-center gap-2">
-                                <code className="text-purple-400 font-mono text-sm bg-purple-500/5 px-2 py-1 rounded">
-                                    {data?.instance || "tenant_default"}
-                                </code>
-                                <ShieldCheck size={14} className="text-green-500" />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Carte Service IA */}
-                    <div className="bg-[#0a0a0a] p-6 rounded-2xl border border-gray-800 hover:border-orange-500/50 transition-all group">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-orange-500/10 rounded-lg group-hover:bg-orange-500/20 transition-colors">
-                                <Bot className="text-orange-500" size={20} />
-                            </div>
-                            <h3 className="font-semibold text-gray-200">Statut Nexus AI</h3>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs text-gray-500 uppercase tracking-widest">Latence Service</p>
-                            <p className="text-sm text-gray-300 italic">
-                                "{data?.ai_response?.status || "Service hors-ligne"}"
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Carte Profil */}
-                    <div className="bg-[#0a0a0a] p-6 rounded-2xl border border-gray-800 hover:border-blue-500/50 transition-all group">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-blue-500/10 rounded-lg group-hover:bg-blue-500/20 transition-colors">
-                                <User className="text-blue-500" size={20} />
-                            </div>
-                            <h3 className="font-semibold text-gray-200">Session</h3>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xs text-gray-500 uppercase tracking-widest">Connecté en tant que</p>
-                            <p className="text-sm text-gray-300 font-medium">Administrateur</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Bannière d'information */}
-                <div className="mt-8 p-6 bg-linear-to-br from-purple-900/40 to-blue-900/40 border border-purple-500/20 rounded-2xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:rotate-12 transition-transform">
-                        <Rocket size={80} />
-                    </div>
-                    <h3 className="font-bold mb-2 text-white flex items-center gap-2">
-                        Prêt pour le déploiement
-                    </h3>
-                    <p className="text-sm text-gray-300 max-w-2xl leading-relaxed">
-                        Votre architecture **Multi-Tenant** est opérationnelle. Le serveur Backend identifie 
-                        automatiquement l'organisation grâce au header `X-Tenant` et isole les données dans 
-                        le schéma PostgreSQL correspondant.
-                    </p>
-                </div>
-            </main>
-        </div>
+      <div className="flex items-center justify-center min-h-screen bg-[#0a0a0f] text-white">
+        <div className="animate-spin w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full" />
+      </div>
     );
+  }
+
+  return (
+    <div className="flex min-h-screen bg-[#0a0a0f] text-white">
+
+      {/* SIDEBAR */}
+      <aside className="w-64 border-r border-white/5 bg-[#0f0f14] p-6 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-10">
+            <Rocket className="text-purple-500" />
+            <span className="font-bold">NEXUS</span>
+          </div>
+
+          <nav className="space-y-3 text-sm">
+            <NavItem icon={<LayoutDashboard size={16}/>} label="Dashboard" />
+            <NavItem icon={<BarChart3 size={16}/>} label="Analytics" />
+            <NavItem icon={<Database size={16}/>} label="Data" />
+            <NavItem icon={<Users size={16}/>} label="Users" />
+            <NavItem icon={<Bot size={16}/>} label="AI Copilot" />
+            <NavItem icon={<Settings size={16}/>} label="Settings" />
+          </nav>
+        </div>
+
+        <button onClick={logout} className="text-sm text-slate-400 hover:text-white">
+          <LogOut size={16} /> Déconnexion
+        </button>
+      </aside>
+
+      {/* MAIN */}
+      <main className="flex-1 p-8">
+
+        {/* HEADER */}
+        <div className="flex justify-between items-center mb-10">
+          <div>
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <p className="text-slate-500 text-sm">
+              Workspace : <span className="text-purple-400">{tenant}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* KPI */}
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <Card title="Modules actifs" value="3" />
+          <Card title="Utilisateurs" value="12" />
+          <Card title="Requêtes AI" value="1.2K" />
+        </div>
+
+        {/* MODULES */}
+        <h2 className="text-lg font-semibold mb-4">Modules</h2>
+
+        <div className="grid md:grid-cols-3 gap-6">
+
+          <ModuleCard
+            title="CRM"
+            desc="Gestion clients"
+            active
+          />
+
+          <ModuleCard
+            title="Finance"
+            desc="Facturation & paiements"
+          />
+
+          <ModuleCard
+            title="Analytics"
+            desc="Statistiques avancées"
+          />
+
+        </div>
+
+        {/* AI STATUS */}
+        <div className="mt-10 p-6 rounded-2xl bg-[#111118] border border-white/5">
+          <h3 className="font-semibold mb-2">Nexus AI</h3>
+          <p className="text-sm text-slate-400">
+            {data?.ai_response?.status || "Actif"}
+          </p>
+        </div>
+
+      </main>
+    </div>
+  );
 }
 
-// Export final avec Suspense pour Next.js
+/* COMPONENTS */
+
+function NavItem({ icon, label }: any) {
+  return (
+    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer">
+      {icon}
+      {label}
+    </div>
+  );
+}
+
+function Card({ title, value }: any) {
+  return (
+    <div className="p-6 rounded-xl bg-[#111118] border border-white/5">
+      <p className="text-xs text-slate-500">{title}</p>
+      <h3 className="text-xl font-bold">{value}</h3>
+    </div>
+  );
+}
+
+function ModuleCard({ title, desc, active }: any) {
+  return (
+    <div className="p-6 rounded-xl bg-[#111118] border border-white/5 hover:border-purple-500/30 transition">
+      <h3 className="font-semibold mb-1">{title}</h3>
+      <p className="text-xs text-slate-500 mb-4">{desc}</p>
+
+      <button className={`text-xs px-3 py-1 rounded-lg ${
+        active ? 'bg-green-500/20 text-green-400' : 'bg-purple-600'
+      }`}>
+        {active ? 'Actif' : 'Activer'}
+      </button>
+    </div>
+  );
+}
+
+/* EXPORT */
 export default function Dashboard() {
-    return (
-        <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
-            <DashboardContent />
-        </Suspense>
-    );
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0f]" />}>
+      <DashboardContent />
+    </Suspense>
+  );
 }

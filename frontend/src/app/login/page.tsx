@@ -1,194 +1,183 @@
 'use client';
 
-import { useState, Suspense, useEffect } from 'react';
+import { useState, Suspense } from 'react';
 import api from '@/lib/api';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AiNotification from '@/components/AiNotification';
+import {
+  Mail,
+  Lock,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert
+} from 'lucide-react';
 
-/**
- * Composant de formulaire de connexion Nexus OS
- * Authentification Multi-Tenant avec retours IA en temps réel
- */
 function LoginForm() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
-    
-    // État de la notification IA
-    const [notif, setNotif] = useState({ 
-        show: false, 
-        msg: '', 
-        type: 'ai' as 'ai' | 'error' | 'success' 
-    });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-    const router = useRouter();
-    const searchParams = useSearchParams();
-    const tenant = searchParams.get('tenant'); 
+  const [notif, setNotif] = useState({
+    show: false,
+    msg: '',
+    type: 'ai' as 'ai' | 'error' | 'success'
+  });
 
-    // Fonction pour déclencher la popup IA
-    const triggerAiNotif = (msg: string, type: 'ai' | 'error' | 'success') => {
-        setNotif({ show: true, msg, type });
-        // Auto-fermeture après 5 secondes sauf pour les erreurs critiques
-        if (type !== 'error') {
-            setTimeout(() => setNotif(prev => ({ ...prev, show: false })), 5000);
-        }
-    };
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tenant = searchParams.get('tenant'); // Récupère "apple" ou "spacex" depuis l'URL
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!tenant) {
-            triggerAiNotif("Le Nexus Core ne détecte aucun identifiant d'instance dans l'URL.", "error");
-            return;
-        }
+  const isPasswordValid = password.length >= 8;
 
-        setLoading(true);
-        
-        try {
-            // Envoi des identifiants + tenant au backend
-            const res = await api.post('/login', { 
-                email, 
-                password,
-                tenant: tenant 
-            });
-            
-            const token = res.data.access_token;
-            
-            // Notification de succès (le message vient de l'IA Python via Laravel)
-            triggerAiNotif(res.data.message || "Accès autorisé. Initialisation du dashboard...", "success");
+  const triggerAiNotif = (msg: string, type: 'ai' | 'error' | 'success') => {
+    setNotif({ show: true, msg, type });
+    if (type !== 'error') {
+      setTimeout(() => setNotif(prev => ({ ...prev, show: false })), 4500);
+    }
+  };
 
-            localStorage.setItem('nexus_token', token);
-            localStorage.setItem('current_tenant', tenant);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-            // Redirection après un court délai pour laisser l'IA "parler"
-            setTimeout(() => {
-                router.push(`/dashboard?tenant=${tenant}`);
-            }, 1800);
-            
-        } catch (err: any) {
-            // Récupération du message d'erreur intelligent généré par Python
-            const errorMsg = err.response?.data?.message || "Échec de liaison au secteur " + tenant;
-            triggerAiNotif(errorMsg, "error");
-        } finally {
-            setLoading(false);
-        }
-    };
+    if (!tenant) {
+      triggerAiNotif("Aucune instance détectée dans l'URL.", "error");
+      return;
+    }
 
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] text-white font-sans overflow-hidden">
-            {/* Composant de Notification IA */}
-            <AiNotification 
-                isVisible={notif.show} 
-                message={notif.msg} 
-                type={notif.type} 
-                onClose={() => setNotif(prev => ({ ...prev, show: false }))} 
-            />
+    setLoading(true);
 
-            {/* Ligne laser décorative supérieure */}
-            <div className="absolute top-0 left-0 w-full h-px bg-linear-to-r from-transparent via-purple-500 to-transparent opacity-50"></div>
-            
-            <form 
-                onSubmit={handleLogin} 
-                className="relative p-8 border border-gray-800 rounded-2xl shadow-2xl w-96 bg-[#0a0a0a]/80 backdrop-blur-md z-10"
-            >
-                {/* Glow effect derrière le logo */}
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-32 h-32 bg-purple-600/10 blur-3xl rounded-full"></div>
+    try {
+      // On envoie le tenant pour que le Back sache quel schéma PostgreSQL ouvrir
+      const res = await api.post('/login', {
+        email,
+        password,
+        tenant: tenant.toLowerCase() 
+      });
 
-                <div className="flex justify-center mb-6">
-                    <div className="p-3 bg-purple-600/10 rounded-xl border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-                        <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                    </div>
-                </div>
+      const token = res.data.access_token;
 
-                <h1 className="text-2xl font-bold mb-1 text-center bg-linear-to-r from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
-                    Nexus Login
-                </h1>
-                <p className="text-gray-500 text-[10px] text-center mb-8 uppercase tracking-[0.3em] font-bold">
-                    Instance : <span className="text-purple-400">{tenant || 'Indéterminée'}</span>
-                </p>
-                
-                <div className="space-y-5">
-                    <div>
-                        <label className="text-[10px] text-gray-500 ml-1 mb-1.5 block font-black tracking-widest">IDENTIFIANT SÉCURISÉ</label>
-                        <input 
-                            type="email" 
-                            placeholder="votre@email.com" 
-                            required
-                            className="w-full p-3 bg-black border border-gray-800 rounded-xl outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all text-sm placeholder:text-gray-700"
-                            onChange={(e) => setEmail(e.target.value)} 
-                        />
-                    </div>
+      triggerAiNotif(
+        res.data.message || `Accès autorisé à l'instance ${tenant}`,
+        "success"
+      );
 
-                    <div>
-                        <label className="text-[10px] text-gray-500 ml-1 mb-1.5 block font-black tracking-widest">CLEF D'ACCÈS</label>
-                        <input 
-                            type="password" 
-                            placeholder="••••••••" 
-                            required
-                            className="w-full p-3 bg-black border border-gray-800 rounded-xl outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 transition-all text-sm placeholder:text-gray-700"
-                            onChange={(e) => setPassword(e.target.value)} 
-                        />
-                    </div>
-                </div>
-                
-                <button 
-                    disabled={loading || !tenant}
-                    type="submit"
-                    className="w-full mt-8 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-widest p-4 rounded-xl transition-all transform active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-purple-900/20 overflow-hidden relative group"
-                >
-                    <span className="relative z-10 flex items-center justify-center gap-2">
-                        {loading ? (
-                            <>
-                                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Synchronisation...
-                            </>
-                        ) : 'Établir la connexion'}
-                    </span>
-                    {/* Effet de brillance au survol */}
-                    <div className="absolute inset-0 w-full h-full bg-linear-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] skew-x-12"></div>
-                </button>
+      // Stockage local pour les futures requêtes API
+      localStorage.setItem('nexus_token', token);
+      localStorage.setItem('current_tenant', tenant);
 
-                {!tenant && (
-                    <div className="mt-6 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
-                        <p className="text-[10px] text-red-400 text-center font-bold tracking-tight">
-                            ⚠️ ERREUR : TUNNEL D'INSTANCE NON DÉFINI
-                        </p>
-                    </div>
-                )}
-            </form>
+      setTimeout(() => {
+        router.push(`/dashboard?tenant=${tenant}`);
+      }, 1200);
 
-            {/* Décoration d'arrière-plan */}
-            <div className="absolute bottom-10 left-10 w-64 h-64 bg-purple-600/5 blur-[120px] rounded-full"></div>
-            <div className="absolute top-10 right-10 w-64 h-64 bg-blue-600/5 blur-[120px] rounded-full"></div>
+    } catch (err: any) {
+      // On affiche le message d'erreur précis du Backend (ex: "Identifiants invalides")
+      triggerAiNotif(
+        err.response?.data?.message || "Échec de l'authentification Nexus",
+        "error"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            <p className="mt-8 text-gray-700 text-[10px] tracking-[0.4em] font-black uppercase">
-                Nexus OS Core &copy; 2026
+  return (
+    <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-4 font-sans relative overflow-hidden">
+
+      {/* BACKGROUND */}
+      <div className="absolute w-[600px] h-[600px] bg-purple-600/20 blur-[120px] top-[-100px] left-[-100px] pointer-events-none" />
+      <div className="absolute w-[500px] h-[500px] bg-blue-600/10 blur-[120px] bottom-[-100px] right-[-100px] pointer-events-none" />
+
+      <AiNotification
+        isVisible={notif.show}
+        message={notif.msg}
+        type={notif.type}
+        onClose={() => setNotif(prev => ({ ...prev, show: false }))}
+      />
+
+      <div className="max-w-[420px] w-full relative z-10">
+
+        <form
+          onSubmit={handleLogin}
+          className="bg-white/3 backdrop-blur-xl border border-white/10 p-8 sm:p-10 rounded-4xl shadow-[0_0_60px_rgba(0,0,0,0.6)] relative overflow-hidden"
+        >
+
+          {/* 🔥 FIX : pointer-events-none ajouté ici pour débloquer le clic sur les inputs */}
+          <div className="absolute inset-0 opacity-[0.05] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none" />
+
+          <div className="mb-8 text-center relative z-20">
+            <h1 className="text-2xl font-black tracking-tight uppercase">
+              Nexus OS <span className="text-purple-500">Login</span>
+            </h1>
+
+            <p className="text-[10px] text-gray-500 mt-2 uppercase tracking-widest font-bold">
+              Domaine : 
+              <span className="text-purple-400 ml-1">
+                {tenant ? `${tenant}.nexus.app` : 'non spécifié'}
+              </span>
             </p>
-        </div>
-    );
+          </div>
+
+          <div className="space-y-5 relative z-20">
+            <div className="relative">
+              <Mail className="absolute left-4 top-4 text-gray-600" size={18} />
+              <input
+                type="email"
+                required
+                placeholder="admin@organisation.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-premium pl-12 relative z-30"
+              />
+            </div>
+
+            <div className="relative">
+              <Lock className="absolute left-4 top-4 text-gray-600" size={18} />
+              <input
+                type="password"
+                required
+                placeholder="Mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-premium pl-12 relative z-30"
+              />
+
+              <div className="absolute right-4 top-4 z-30">
+                {isPasswordValid
+                  ? <ShieldCheck className="text-green-400" size={20} />
+                  : <ShieldAlert className="text-orange-400" size={20} />
+                }
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !tenant}
+            className="btn-primary mt-8 w-full relative z-20 cursor-pointer"
+          >
+            {loading ? <Loader2 className="animate-spin" size={18} /> : "Vérifier l'empreinte"}
+          </button>
+
+          {!tenant && (
+            <div className="mt-5 p-3 text-center text-[10px] text-red-400 border border-red-500/20 rounded-xl animate-pulse">
+              Attention : Accès direct impossible sans identifiant d'instance.
+            </div>
+          )}
+
+          <p className="text-[9px] text-gray-600 mt-8 text-center uppercase tracking-[0.3em] font-bold opacity-50">
+            End-to-End Encrypted Node
+          </p>
+
+        </form>
+      </div>
+    </div>
+  );
 }
 
-/**
- * Export avec Suspense pour la gestion des SearchParams (Next.js 13/14+)
- */
 export default function LoginPage() {
-    return (
-        <Suspense fallback={
-            <div className="flex items-center justify-center min-h-screen bg-[#050505]">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-2 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
-                    <div className="text-purple-500 text-[10px] font-black tracking-[0.5em] uppercase animate-pulse">
-                        Ouverture du tunnel...
-                    </div>
-                </div>
-            </div>
-        }>
-            <LoginForm />
-        </Suspense>
-    );
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
+      <LoginForm />
+    </Suspense>
+  );
 }
