@@ -3,65 +3,46 @@
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\TenantController;
 
 /*
 |--------------------------------------------------------------------------
 | 1. ROUTES GLOBALES (NEXUS CORE)
 |--------------------------------------------------------------------------
-| Ces routes ne dépendent pas d'un schéma spécifique. Elles servent à 
-| l'administration centrale et à l'aiguillage initial.
 */
-Route::prefix('tenants')->group(function () {
-    // Création d'une nouvelle instance (Provisioning)
-    Route::post('/provision', [TenantController::class, 'provision']);
-    
-    // Vérification d'existence (utilisé par le Front pour valider le slug)
-    Route::get('/check/{slug}', [TenantController::class, 'exists']);
-});
-
-
+// Inscription d'un nouveau client (Provisioning automatique)
+Route::post('/register', [AuthController::class, 'register']);
+Route::get('/check-tenant/{name}', [App\Http\Controllers\TenantController::class, 'exists']);
 /*
 |--------------------------------------------------------------------------
-| 2. ROUTES MULTI-TENANT (ISOLÉES PAR SCHÉMA)
+| 2. ROUTES MULTI-TENANT (MIDDLEWARE 'tenant')
 |--------------------------------------------------------------------------
-| Toutes ces routes passent par le middleware 'tenant' qui bascule 
-| dynamiquement la connexion DB vers le schéma de l'école.
 */
 Route::middleware(['tenant'])->group(function () {
 
-    /**
-     * A. ACCÈS PUBLIC À L'INSTANCE
-     * Portails de connexion spécifiques à l'école.
-     */
+    // A. Connexion (Public pour l'instance identifiée par X-Tenant)
     Route::post('/login', [AuthController::class, 'login']);
 
-
-    /**
-     * B. ACCÈS PROTÉGÉ (AUTH:SANCTUM)
-     * L'utilisateur doit être authentifié DANS son schéma d'école.
-     */
+    // B. Accès Protégé (Authentification Sanctum DANS le schéma)
     Route::middleware(['auth:sanctum'])->group(function () {
         
-        // Profil de l'utilisateur connecté
+        // Profil de l'utilisateur
         Route::get('/user', function (\Illuminate\Http\Request $request) {
             return response()->json([
-                'user' => $request->user(),
-                'tenant' => $request->input('tenant') // Injecté par IdentifyTenant
+                'user'   => $request->user(),
+                'tenant' => $request->header('X-Tenant') // Récupère le nom du tenant
             ]);
         });
 
-        // Déconnexion (Révocation du token Sanctum)
+        // Déconnexion
         Route::post('/logout', [AuthController::class, 'logout']);
 
         /**
          * AI NEXUS LINK SERVICE
-         * Route de communication avec le micro-service IA.
          */
         Route::get('/test-ai', function () {
             $url = env('AI_SERVICE_URL', 'http://localhost:5000');
-            // Récupération du schéma actif pour le contexte IA
-            $currentSchema = config('database.connections.tenant.search_path');
+            // Récupération du search_path actuel pour le contexte IA
+            $currentSchema = config('database.connections.pgsql.search_path');
             
             try {
                 $response = Http::timeout(5)
@@ -79,19 +60,16 @@ Route::middleware(['tenant'])->group(function () {
             } catch (\Exception $e) {
                 return response()->json([
                     'status' => 'AI Service Offline',
-                    'error'  => $e->getMessage(),
-                    'hint'   => 'Check if the AI micro-service is running on ' . $url
+                    'error'  => $e->getMessage()
                 ], 503);
             }
         });
 
         /*
         |------------------------------------------------------------------
-        | AJOUTE TES ROUTES DE MODULES ICI (Scolarité, Finance, etc.)
+        | MODULES FUTURS (Scolarité, Finance, etc.)
         |------------------------------------------------------------------
         */
-        // Route::get('/students', [StudentController::class, 'index']);
-        // Route::post('/modules/activate', [ModuleController::class, 'activate']);
-
+        // Route::apiResource('students', StudentController::class);
     });
 });
