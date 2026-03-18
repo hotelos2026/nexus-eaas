@@ -7,44 +7,42 @@ use Illuminate\Support\Facades\File;
 class ModuleDiscoveryService
 {
     public function getAllAvailableModules($filterSector = null)
-    {
-        $modulesPath = base_path('Modules');
+{
+    $modulesPath = base_path('Modules');
+    $modules = [];
 
-        if (!File::exists($modulesPath)) {
-            return [];
-        }
+    // 1. On récupère les dossiers de secteurs (Logistique, Academique...)
+    $sectors = File::directories($modulesPath);
 
-        $modules = [];
-        // On scanne directement les dossiers à la racine de /Modules
-        $directories = File::directories($modulesPath);
+    foreach ($sectors as $sectorPath) {
+        $sectorName = basename($sectorPath); // ex: Logistique
 
-        foreach ($directories as $modulePath) {
+        // 2. On scanne les modules à l'intérieur de ce secteur
+        $moduleDirs = File::directories($sectorPath);
+
+        foreach ($moduleDirs as $modulePath) {
             $jsonPath = $modulePath . '/module.json';
-            
+
             if (File::exists($jsonPath)) {
                 $config = json_decode(File::get($jsonPath), true);
                 
-                // On récupère la catégorie dans le JSON (ex: "Academique" ou "Logistique")
-                $moduleCategory = $config['category'] ?? 'Shared';
+                // On garde le secteur défini par le dossier parent
+                $moduleCategory = $sectorName;
 
-                // FILTRE : On laisse passer si :
-                // 1. Aucun filtre n'est demandé
-                // 2. OU le module est "Shared"
-                // 3. OU le module correspond au secteur du client (ex: "Logistique")
+                // Filtrage par secteur du client
                 if ($filterSector && !in_array($moduleCategory, [$filterSector, 'Shared'])) {
                     continue;
                 }
 
                 $modules[] = [
-                    'id'          => basename($modulePath), // Identifiant unique (nom du dossier)
-                    'name'        => $config['name'] ?? basename($modulePath),
-                    'category'    => $moduleCategory,
-                    'description' => $config['description'] ?? '',
-                    'icon'        => $config['icon'] ?? 'Package',
+                    'id'       => basename($modulePath),
+                    'name'     => $config['name'] ?? basename($modulePath),
+                    'category' => $moduleCategory, // Logistique, etc.
+                    'icon'     => $config['icon'] ?? 'Package'
                 ];
             }
         }
-
-        return $modules;
     }
+    return $modules;
+}
 }
