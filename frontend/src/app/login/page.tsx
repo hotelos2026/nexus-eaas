@@ -28,29 +28,41 @@ function LoginForm() {
   const searchParams = useSearchParams();
 
   // --- LOGIQUE DE DÉTECTION DU TENANT ---
-  useEffect(() => {
-    const queryTenant = searchParams.get('tenant');
-    
-    if (queryTenant) {
-      setActiveTenant(queryTenant.toLowerCase());
-      localStorage.setItem('current_tenant', queryTenant.toLowerCase());
-    } else {
-      // Détection par sous-domaine (ex: apple.nexus.app)
-      const hostname = window.location.hostname;
-      const parts = hostname.split('.');
-      if (parts.length > (hostname.includes('localhost') ? 1 : 2)) {
-        const subdomain = parts[0];
-        if (!['www', 'api', 'nexus-eaas', 'nexus'].includes(subdomain)) {
-          setActiveTenant(subdomain.toLowerCase());
-          localStorage.setItem('current_tenant', subdomain.toLowerCase());
-        }
-      } else {
-        // Backup : on regarde dans le localStorage
-        const saved = localStorage.getItem('current_tenant');
-        if (saved) setActiveTenant(saved);
+  // --- LOGIQUE DE DÉTECTION ET VALIDATION DU TENANT ---
+useEffect(() => {
+  const verifyAndSetTenant = async (slug: string) => {
+    try {
+      // On vérifie si le node existe VRAIMENT dans le Nexus (BDD)
+      const res = await api.get(`/check-tenant/${slug}`);
+      
+      if (res.data.exists) {
+        setActiveTenant(slug.toLowerCase());
+        localStorage.setItem('current_tenant', slug.toLowerCase());
+      }
+    } catch (err) {
+      // Si le backend répond 404, on invalide tout
+      setActiveTenant(null);
+      localStorage.removeItem('current_tenant');
+      triggerAiNotif(`Le node [${slug}] est inconnu ou désactivé.`, "error");
+    }
+  };
+
+  const queryTenant = searchParams.get('tenant');
+  
+  if (queryTenant) {
+    verifyAndSetTenant(queryTenant);
+  } else {
+    // Détection par sous-domaine
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+    if (parts.length > (hostname.includes('localhost') ? 1 : 2)) {
+      const subdomain = parts[0];
+      if (!['www', 'api', 'nexus-eaas', 'nexus'].includes(subdomain)) {
+        verifyAndSetTenant(subdomain);
       }
     }
-  }, [searchParams]);
+  }
+}, [searchParams]);
 
   const isPasswordValid = password.length >= 8;
 
