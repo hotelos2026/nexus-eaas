@@ -6,7 +6,10 @@ use Illuminate\Support\Facades\File;
 
 class ModuleDiscoveryService
 {
-    public function getAllAvailableModules()
+    /**
+     * Récupère les modules, avec un filtre optionnel par secteur.
+     */
+    public function getAllAvailableModules($filterSector = null)
     {
         $modulesPath = base_path('Modules');
 
@@ -18,15 +21,21 @@ class ModuleDiscoveryService
         $directories = File::directories($modulesPath);
 
         foreach ($directories as $dirPath) {
-            $dirName = basename($dirPath);
+            $dirName = basename($dirPath); // Ex: "Logistique", "Academique", "Shared"
             
-            // CAS 1 : Le module.json est directement dans le dossier (ex: Modules/Logistique/module.json)
+            // On vérifie si on doit filtrer par secteur
+            // On laisse toujours passer les modules du dossier 'Shared' (outils communs)
+            if ($filterSector && !in_array($dirName, [$filterSector, 'Shared', 'shared'])) {
+                continue;
+            }
+
+            // CAS 1 : module.json à la racine du secteur
             $rootJson = $dirPath . '/module.json';
             if (File::exists($rootJson)) {
                 $modules[] = $this->parseModule($rootJson, $dirName, $dirPath);
             }
 
-            // CAS 2 : On cherche dans les sous-dossiers (ex: Modules/Academique/SchoolManager/module.json)
+            // CAS 2 : module.json dans un sous-dossier (ex: Logistique/FleetControl)
             $subDirs = File::directories($dirPath);
             foreach ($subDirs as $subPath) {
                 $subJson = $subPath . '/module.json';
@@ -39,16 +48,14 @@ class ModuleDiscoveryService
         return $modules;
     }
 
-    /**
-     * Extrait proprement les infos du fichier JSON
-     */
     private function parseModule($jsonPath, $category, $fullPath)
     {
         $config = json_decode(File::get($jsonPath), true);
         return [
-            'name'     => $config['name'] ?? basename($fullPath),
-            'category' => $category, // Utilisé pour le select du frontend
-            'path'     => $fullPath
+            'name'        => $config['name'] ?? basename($fullPath),
+            'description' => $config['description'] ?? 'Aucune description',
+            'category'    => $category, 
+            'path'        => $fullPath
         ];
     }
 }
