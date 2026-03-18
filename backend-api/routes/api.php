@@ -11,28 +11,25 @@ use Illuminate\Http\Request;
 |--------------------------------------------------------------------------
 | 1. ROUTES GLOBALES (NEXUS CORE - REGISTRE CENTRAL)
 |--------------------------------------------------------------------------
-| Ces routes opèrent sur le schéma 'public'. Elles permettent la découverte
-| et la création d'instances. Elles ne nécessitent pas de header X-Tenant.
 */
 
-// Inscription & Provisioning (Création physique de l'instance et du schéma)
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/tenants/provision', [TenantController::class, 'provision']);
-
-// Nexus Finder : Vérifier si un nom d'instance est déjà pris
 Route::get('/check-tenant/{name}', [TenantController::class, 'exists']);
 
 /**
- * DÉCOUVERTE DYNAMIQUE DES MÉTIERS
- * Utilisée par le Nexus Finder pour afficher les secteurs disponibles 
- * basés sur les dossiers présents dans /Modules à la racine.
+ * NEXUS FINDER : DÉCOUVERTE DES SECTEURS
+ * On filtre 'Shared' pour ne pas le proposer à l'inscription.
  */
 Route::get('/sectors', function (ModuleDiscoveryService $discovery) {
-    // Scan réel du disque dur
     $modules = $discovery->getAllAvailableModules(); 
     
-    // Extraction des catégories (secteurs) uniques
-    $sectors = collect($modules)->pluck('category')->unique()->values();
+    $sectors = collect($modules)
+        ->pluck('category')
+        ->unique()
+        // Supprime 'Shared' et les noms vides de la liste d'inscription
+        ->filter(fn($sector) => !in_array(strtolower($sector), ['shared', 'common', 'core']))
+        ->values();
     
     return response()->json($sectors);
 });
@@ -41,37 +38,25 @@ Route::get('/sectors', function (ModuleDiscoveryService $discovery) {
 |--------------------------------------------------------------------------
 | 2. ROUTES MULTI-TENANT (INSTANCES ISOLÉES)
 |--------------------------------------------------------------------------
-| Toutes ces routes passent par le middleware 'tenant' qui bascule 
-| la connexion DB vers le schéma privé via le header 'X-Tenant'.
 */
 Route::middleware(['tenant'])->group(function () {
 
-    /**
-     * A. AUTHENTIFICATION À L'INSTANCE
-     */
     Route::post('/login', [AuthController::class, 'login']);
 
-    /**
-     * B. ACCÈS PROTÉGÉ (AUTH:SANCTUM)
-     * L'utilisateur doit être authentifié au sein de son instance.
-     */
     Route::middleware(['auth:sanctum'])->group(function () {
         
-        // Récupération de l'identité et du contexte de l'instance
         Route::get('/user', function (Request $request) {
             return response()->json([
                 'user'    => $request->user(),
                 'tenant'  => $request->header('X-Tenant'),
-                'context' => $request->attributes->get('tenant_info') // Infos venant du middleware
+                'context' => $request->attributes->get('tenant_info')
             ]);
         });
 
-        // Déconnexion de l'instance
         Route::post('/logout', [AuthController::class, 'logout']);
 
         /**
-         * C. NEXUS APP STORE (MODULARITÉ INTELLIGENTE)
-         * Filtre les applications disponibles selon le secteur du client.
+         * NEXUS APP STORE
          */
         Route::get('/nexus/modules', function (ModuleDiscoveryService $discovery) {
             $tenant = request()->attributes->get('tenant_info');
@@ -85,8 +70,7 @@ Route::middleware(['tenant'])->group(function () {
         });
 
         /**
-         * D. AI NEXUS LINK SERVICE
-         * Communication avec le micro-service IA (Python/FastAPI)
+         * AI NEXUS LINK
          */
         Route::get('/test-ai', function () {
             $url = config('services.ai.url', 'https://ai-nexus.up.railway.app');
@@ -112,13 +96,5 @@ Route::middleware(['tenant'])->group(function () {
                 ], 503);
             }
         });
-
-        /*
-        |------------------------------------------------------------------
-        | INJECTION DE ROUTES MODULES
-        |------------------------------------------------------------------
-        | Tes modules injecteront leurs propres routes ici via leurs 
-        | ServiceProviders respectifs.
-        */
     });
 });
