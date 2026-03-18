@@ -9,25 +9,29 @@ use Illuminate\Http\Request;
 
 /*
 |--------------------------------------------------------------------------
-| 1. ROUTES GLOBALES (NEXUS CORE)
+| 1. ROUTES GLOBALES (NEXUS CORE - REGISTRE CENTRAL)
 |--------------------------------------------------------------------------
-| Ces routes servent à créer ou identifier les instances dans le registre 
-| central (schéma public). Pas besoin de header X-Tenant ici.
+| Ces routes opèrent sur le schéma 'public'. Elles permettent la découverte
+| et la création d'instances. Elles ne nécessitent pas de header X-Tenant.
 */
 
-// Inscription / Provisioning d'une nouvelle instance
+// Inscription & Provisioning (Création physique de l'instance et du schéma)
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/tenants/provision', [TenantController::class, 'provision']);
 
-// Nexus Finder : Vérifier l'existence d'un node (ex: apple.network)
+// Nexus Finder : Vérifier si un nom d'instance est déjà pris
 Route::get('/check-tenant/{name}', [TenantController::class, 'exists']);
 
-
-// Route pour que le formulaire d'inscription sache quels secteurs existent
-Route::get('/sectors', function (App\Services\ModuleDiscoveryService $discovery) {
-    $modules = $discovery->getAllAvailableModules(); // On récupère tout
+/**
+ * DÉCOUVERTE DYNAMIQUE DES MÉTIERS
+ * Utilisée par le Nexus Finder pour afficher les secteurs disponibles 
+ * basés sur les dossiers présents dans /Modules à la racine.
+ */
+Route::get('/sectors', function (ModuleDiscoveryService $discovery) {
+    // Scan réel du disque dur
+    $modules = $discovery->getAllAvailableModules(); 
     
-    // On extrait uniquement les catégories/secteurs uniques
+    // Extraction des catégories (secteurs) uniques
     $sectors = collect($modules)->pluck('category')->unique()->values();
     
     return response()->json($sectors);
@@ -35,9 +39,10 @@ Route::get('/sectors', function (App\Services\ModuleDiscoveryService $discovery)
 
 /*
 |--------------------------------------------------------------------------
-| 2. ROUTES MULTI-TENANT (ISOLÉES)
+| 2. ROUTES MULTI-TENANT (INSTANCES ISOLÉES)
 |--------------------------------------------------------------------------
-| Le middleware 'tenant' identifie le schéma PostgreSQL privé.
+| Toutes ces routes passent par le middleware 'tenant' qui bascule 
+| la connexion DB vers le schéma privé via le header 'X-Tenant'.
 */
 Route::middleware(['tenant'])->group(function () {
 
@@ -48,15 +53,16 @@ Route::middleware(['tenant'])->group(function () {
 
     /**
      * B. ACCÈS PROTÉGÉ (AUTH:SANCTUM)
+     * L'utilisateur doit être authentifié au sein de son instance.
      */
     Route::middleware(['auth:sanctum'])->group(function () {
         
-        // Profil utilisateur & Contexte Instance
+        // Récupération de l'identité et du contexte de l'instance
         Route::get('/user', function (Request $request) {
             return response()->json([
-                'user'   => $request->user(),
-                'tenant' => $request->header('X-Tenant'),
-                'context'=> $request->attributes->get('tenant_info')
+                'user'    => $request->user(),
+                'tenant'  => $request->header('X-Tenant'),
+                'context' => $request->attributes->get('tenant_info') // Infos venant du middleware
             ]);
         });
 
@@ -65,7 +71,7 @@ Route::middleware(['tenant'])->group(function () {
 
         /**
          * C. NEXUS APP STORE (MODULARITÉ INTELLIGENTE)
-         * Détecte les dossiers dans /Modules selon le secteur du client.
+         * Filtre les applications disponibles selon le secteur du client.
          */
         Route::get('/nexus/modules', function (ModuleDiscoveryService $discovery) {
             $tenant = request()->attributes->get('tenant_info');
@@ -80,10 +86,10 @@ Route::middleware(['tenant'])->group(function () {
 
         /**
          * D. AI NEXUS LINK SERVICE
-         * Pont vers le micro-service Python/IA
+         * Communication avec le micro-service IA (Python/FastAPI)
          */
         Route::get('/test-ai', function () {
-            $url = env('AI_SERVICE_URL', 'https://ai-nexus.up.railway.app');
+            $url = config('services.ai.url', 'https://ai-nexus.up.railway.app');
             $currentSchema = config('database.connections.pgsql.search_path');
             
             try {
@@ -109,9 +115,10 @@ Route::middleware(['tenant'])->group(function () {
 
         /*
         |------------------------------------------------------------------
-        | MODULES MÉTIERS (Injectés dynamiquement par les modules installés)
+        | INJECTION DE ROUTES MODULES
         |------------------------------------------------------------------
+        | Tes modules injecteront leurs propres routes ici via leurs 
+        | ServiceProviders respectifs.
         */
-        // Ici viendront les routes spécifiques à SchoolManager, FleetControl, etc.
     });
 });

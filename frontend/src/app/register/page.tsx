@@ -20,22 +20,22 @@ export default function RegisterSpace() {
     admin_name: 'Administrateur',
     admin_email: '',
     password: '',
-    sector: '' // Sera initialisé par l'appel API
+    sector: '' 
   });
 
-  // --- LOGIQUE DE DÉTECTION AUTOMATIQUE DES SECTEURS ---
+  // --- SYNCHRONISATION DYNAMIQUE AVEC LE DISQUE DUR (BACKEND) ---
   useEffect(() => {
     async function fetchSectors() {
       try {
-        // Cette route appelle ton ModuleDiscoveryService côté Backend
         const res = await api.get('/sectors'); 
         setAvailableSectors(res.data);
-        if (res.data.length > 0) {
+        // On auto-sélectionne le premier secteur trouvé s'il n'y a pas encore de choix
+        if (res.data.length > 0 && !formData.sector) {
           setFormData(prev => ({ ...prev, sector: res.data[0] }));
         }
       } catch (err) {
-        console.error("Impossible de synchroniser les secteurs métiers", err);
-        setAvailableSectors(['general']); // Fallback au cas où
+        console.error("Nexus Sync Error: Secteurs introuvables", err);
+        setAvailableSectors(['Général']); 
       }
     }
     fetchSectors();
@@ -53,13 +53,12 @@ export default function RegisterSpace() {
     setLoading(true);
 
     try {
-      // Propulsion vers le moteur de provisioning EaaS
+      // Envoi au moteur de provisioning
       const res = await api.post('/tenants/provision', formData);
-      
-      // Succès : Redirection vers le login de la nouvelle instance
+      // Redirection immédiate vers l'instance créée
       router.push(`/login?tenant=${res.data.tenant}`);
     } catch (err: any) {
-      alert("Erreur de propulsion : " + (err.response?.data?.message || "Identifiant déjà utilisé."));
+      alert("Échec de propulsion : " + (err.response?.data?.message || "Erreur système."));
       setLoading(false);
     }
   };
@@ -104,8 +103,8 @@ export default function RegisterSpace() {
                 <input
                   type="text"
                   required
-                  placeholder="Nom de l'entreprise"
-                  className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-purple-500/50 transition-all"
+                  placeholder="Nom de l'entreprise / Organisation"
+                  className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-purple-500/50 transition-all placeholder:text-gray-600"
                   value={formData.company_name}
                   onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
                 />
@@ -115,11 +114,12 @@ export default function RegisterSpace() {
                   <input
                     type="text"
                     required
-                    placeholder="id-unique-instance"
-                    className="w-full bg-white/5 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-purple-500/50 transition-all"
+                    placeholder="identifiant-instance"
+                    className="w-full bg-white/5 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-purple-500/50 transition-all placeholder:text-gray-600"
                     value={formData.tenant_slug}
                     onChange={(e) => setFormData({ ...formData, tenant_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
                   />
+                  <span className="absolute right-4 top-5 text-[9px] text-gray-500 font-mono">.nexus-os.com</span>
                 </div>
 
                 {/* SÉLECTEUR DE SECTEUR DYNAMIQUE */}
@@ -130,10 +130,10 @@ export default function RegisterSpace() {
                     value={formData.sector}
                     onChange={(e) => setFormData({ ...formData, sector: e.target.value })}
                   >
-                    <option value="" disabled>Sélectionner un secteur</option>
+                    <option value="" disabled>Choisir un secteur d'activité</option>
                     {availableSectors.map((sector) => (
                       <option key={sector} value={sector} className="bg-[#0f0f0f]">
-                        Secteur : {sector}
+                        Secteur : {sector.replace(/_/g, ' ')}
                       </option>
                     ))}
                   </select>
@@ -145,9 +145,9 @@ export default function RegisterSpace() {
                 type="button"
                 disabled={!canGoToStep2}
                 onClick={() => setStep(2)}
-                className="w-full mt-8 bg-white text-black font-bold p-4 rounded-2xl hover:bg-purple-500 hover:text-white transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                className="w-full mt-8 bg-white text-black font-bold p-4 rounded-2xl hover:bg-purple-500 hover:text-white transition-all disabled:opacity-20 disabled:cursor-not-allowed uppercase text-xs tracking-widest"
               >
-                Suivant
+                Continuer
               </button>
             </div>
           )}
@@ -156,7 +156,7 @@ export default function RegisterSpace() {
           {step === 2 && (
             <div className="relative z-20 animate-in fade-in slide-in-from-right-4 duration-500">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2 uppercase tracking-tight">
-                <Lock className="text-purple-400" size={20} /> Master Access
+                <Lock className="text-purple-400" size={20} /> Accès Maître
               </h2>
 
               <div className="space-y-4">
@@ -165,8 +165,8 @@ export default function RegisterSpace() {
                   <input
                     type="email"
                     required
-                    placeholder="email@admin.com"
-                    className="w-full bg-white/5 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-purple-500/50"
+                    placeholder="Email de l'administrateur"
+                    className="w-full bg-white/5 border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-purple-500/50 placeholder:text-gray-600"
                     value={formData.admin_email}
                     onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
                   />
@@ -177,7 +177,7 @@ export default function RegisterSpace() {
                     type="password"
                     required
                     placeholder="Mot de passe (8+ caractères)"
-                    className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-purple-500/50"
+                    className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-purple-500/50 placeholder:text-gray-600"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   />
@@ -188,22 +188,22 @@ export default function RegisterSpace() {
               </div>
 
               <div className="flex gap-3 mt-8">
-                <button type="button" onClick={() => setStep(1)} className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl hover:bg-white/10 transition-all">
+                <button type="button" onClick={() => setStep(1)} className="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl hover:bg-white/10 transition-all text-xs uppercase tracking-widest">
                   Retour
                 </button>
                 <button 
                   type="submit" 
                   disabled={loading || !canSubmit}
-                  className="flex-2 bg-purple-600 text-white font-bold p-4 rounded-2xl hover:bg-purple-500 transition-all flex justify-center items-center"
+                  className="flex-2 bg-purple-600 text-white font-bold p-4 rounded-2xl hover:bg-purple-500 transition-all flex justify-center items-center gap-2 text-xs uppercase tracking-widest"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={20} /> : "Propulser"}
+                  {loading ? <Loader2 className="animate-spin" size={20} /> : "Propulser l'instance"}
                 </button>
               </div>
             </div>
           )}
 
           <p className="text-[9px] text-gray-600 mt-8 text-center uppercase tracking-[0.3em] font-bold opacity-50 relative z-20">
-            Nexus Engine EaaS v2.0
+            Nexus Engine EaaS v2.0 • Propulsion System
           </p>
         </form>
       </div>

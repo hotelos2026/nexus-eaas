@@ -6,43 +6,39 @@ use Illuminate\Support\Facades\File;
 
 class ModuleDiscoveryService
 {
-    /**
-     * Scanne récursivement le dossier Modules/Secteur/Module/module.json
-     */
-    public function getAllAvailableModules($tenantSector = null)
+    public function getAllAvailableModules()
     {
-        $path = base_path('Modules');
-        $allModules = [];
+        // base_path('Modules') pointe à la RACINE du projet, pas dans app/
+        $modulesPath = base_path('Modules');
 
-        if (!File::exists($path)) return [];
+        if (!File::exists($modulesPath)) {
+            return [];
+        }
 
-        // 1. On récupère les Secteurs (Academic, Healthcare...)
-        $sectors = File::directories($path);
+        $modules = [];
+        // On scanne les dossiers (ex: Academic, Healthcare)
+        $categories = File::directories($modulesPath);
 
-        foreach ($sectors as $sectorPath) {
-            // 2. On récupère les Modules dans chaque secteur
-            $modules = File::directories($sectorPath);
-
-            foreach ($modules as $modulePath) {
-                $manifestPath = $modulePath . '/module.json';
-
-                if (File::exists($manifestPath)) {
-                    $config = json_decode(File::get($manifestPath), true);
-                    
-                    // 3. Filtrage Intelligent par Secteur
-                    // On garde si : pas de filtre OU secteur match OU secteur 'Shared'
-                    $isShared = basename($sectorPath) === 'Shared';
-                    $matchesSector = $tenantSector && in_array($tenantSector, $config['compatible_sectors'] ?? []);
-
-                    if (!$tenantSector || $isShared || $matchesSector) {
-                        $allModules[] = array_merge($config, [
-                            'path' => basename($modulePath),
-                            'sector' => basename($sectorPath)
-                        ]);
-                    }
+        foreach ($categories as $categoryPath) {
+            $categoryName = basename($categoryPath);
+            
+            // On scanne les sous-modules (ex: SchoolManager)
+            $subModules = File::directories($categoryPath);
+            
+            foreach ($subModules as $modulePath) {
+                $jsonPath = $modulePath . '/module.json';
+                
+                if (File::exists($jsonPath)) {
+                    $config = json_decode(File::get($jsonPath), true);
+                    $modules[] = [
+                        'name' => $config['name'] ?? basename($modulePath),
+                        'category' => $categoryName, // C'est CA qui remplit ton select
+                        'path' => $modulePath
+                    ];
                 }
             }
         }
-        return $allModules;
+
+        return $modules;
     }
 }
