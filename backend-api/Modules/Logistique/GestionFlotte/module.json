@@ -1,12 +1,12 @@
 {
-    "id": "GestionStock",
-    "name": "Inventaire & Stock",
+    "id": "GestionFlotte",
+    "name": "Flotte Véhicules",
     "category": "Logistique",
-    "description": "Suivi des entrées/sorties, alertes de rupture, multi-entrepôts et inventaire en temps réel.",
-    "price_per_month": 45000,
+    "description": "Suivi carburant, maintenance et planning des chauffeurs.",
+    "price_per_month": 60000,
     "currency": "Ar",
     "is_promo": false,
-    "icon": "Package",
-    "color": "#4f46e5",
+    "icon": "Truck",
+    "color": "#f59e0b",
     "status": "available"
 }

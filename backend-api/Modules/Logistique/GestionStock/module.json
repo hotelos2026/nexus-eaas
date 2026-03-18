@@ -1,1 +1,12 @@
-{"name": "Gestion Stock", "category": "Logistique"}
+{
+    "id": "GestionStock",
+    "name": "Inventaire & Stock",
+    "category": "Logistique",
+    "description": "Suivi des entrées/sorties, alertes de rupture et inventaire en temps réel.",
+    "price_per_month": 45000,
+    "currency": "Ar",
+    "is_promo": false,
+    "icon": "Package",
+    "color": "#4f46e5",
+    "status": "available"
+}
