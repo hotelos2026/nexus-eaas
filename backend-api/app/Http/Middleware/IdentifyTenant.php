@@ -29,6 +29,7 @@ class IdentifyTenant
         $tenantDomain = strtolower(trim($tenantDomain));
 
         // 2. Recherche du tenant dans le schéma public (connexion 'pgsql')
+        // Note : On utilise explicitement 'pgsql' pour la table centrale des tenants
         $tenant = DB::connection('pgsql')
             ->table('tenants')
             ->where('domain', $tenantDomain)
@@ -46,24 +47,28 @@ class IdentifyTenant
             $schemaName = $tenant->database_schema;
 
             // 3. Configuration dynamique de la connexion 'tenant'
-            // On clone la config par défaut de Railway (pgsql)
+            // On clone la configuration Railway de base
             $config = config('database.connections.pgsql');
             $config['search_path'] = $schemaName;
             
+            // On injecte la nouvelle config 'tenant'
             config(['database.connections.tenant' => $config]);
 
-            // 4. Reset des connexions existantes
+            // 4. RESET CRITIQUE : On purge les instances de connexion pour forcer le nouveau search_path
+            DB::purge('pgsql');
             DB::purge('tenant');
 
             // 5. Application du search_path au niveau PDO (Indispensable pour Postgres)
             $quotedSchema = '"' . str_replace('"', '""', $schemaName) . '"';
-            $pdo = DB::connection('tenant')->getPdo();
-            $pdo->exec("SET search_path TO $quotedSchema, public");
+            
+            // On force l'exécution de SET search_path sur la connexion 'tenant'
+            DB::connection('tenant')->getPdo()->exec("SET search_path TO $quotedSchema, public");
 
-            // 6. Définir 'tenant' comme connexion par défaut pour cette requête
+            // 6. Définir 'tenant' comme connexion par défaut pour le reste de la requête
+            // Cela permet à Sanctum et aux Models de trouver les bonnes tables automatiquement
             DB::setDefaultConnection('tenant');
 
-            // 7. Partage des données du tenant dans l'objet Request
+            // 7. Partage des données du tenant dans l'objet Request pour usage ultérieur
             $request->attributes->add(['tenant' => $tenant]);
 
         } catch (\Exception $e) {
