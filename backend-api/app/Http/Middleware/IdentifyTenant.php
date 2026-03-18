@@ -16,7 +16,7 @@ class IdentifyTenant
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Extraction de l'identifiant (Priorité au Header X-Tenant pour Next.js)
+        // 1. Extraction de l'identifiant (Priorité au Header X-Tenant)
         $tenantDomain = $request->header('X-Tenant') ?? $request->query('tenant');
 
         if (!$tenantDomain) {
@@ -28,53 +28,51 @@ class IdentifyTenant
 
         $tenantDomain = strtolower(trim($tenantDomain));
 
+        // 2. Recherche du tenant dans le schéma public (connexion 'pgsql')
+        $tenant = DB::connection('pgsql')
+            ->table('tenants')
+            ->where('domain', $tenantDomain)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$tenant) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "Instance Nexus [$tenantDomain] non identifiée ou inactive."
+            ], 404);
+        }
+
         try {
-            // --- ÉTAPE CRUCIALE : Forcer la recherche dans le schéma PUBLIC ---
-            // On s'assure que la connexion principale pointe sur 'public' pour trouver la table 'tenants'
-            Config::set('database.connections.pgsql.search_path', 'public');
-            DB::purge('pgsql'); 
-
-            $tenant = DB::connection('pgsql')
-                ->table('tenants')
-                ->where('domain', $tenantDomain)
-                ->where('is_active', true)
-                ->first();
-
-            if (!$tenant) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => "Instance Nexus [$tenantDomain] non identifiée ou inactive."
-                ], 404);
-            }
-
             $schemaName = $tenant->database_schema;
 
-            // 2. Configuration dynamique de la connexion 'tenant'
-            $config = Config::get('database.connections.pgsql');
+            // 3. Configuration dynamique de la connexion 'tenant'
+            // On clone la config par défaut de Railway (pgsql)
+            $config = config('database.connections.pgsql');
             $config['search_path'] = $schemaName;
             
-            Config::set('database.connections.tenant', $config);
-            
-            // 3. Purge et Reconnexion pour appliquer le schéma
-            DB::purge('tenant');
-            
-            // 4. SET search_path au niveau PDO (Double sécurité pour PostgreSQL)
-            $quotedSchema = '"' . str_replace('"', '""', $schemaName) . '"';
-            DB::connection('tenant')->getPdo()->exec("SET search_path TO $quotedSchema, public");
+            config(['database.connections.tenant' => $config]);
 
-            // 5. Définir 'tenant' comme connexion par défaut pour cette requête
+            // 4. Reset des connexions existantes
+            DB::purge('tenant');
+
+            // 5. Application du search_path au niveau PDO (Indispensable pour Postgres)
+            $quotedSchema = '"' . str_replace('"', '""', $schemaName) . '"';
+            $pdo = DB::connection('tenant')->getPdo();
+            $pdo->exec("SET search_path TO $quotedSchema, public");
+
+            // 6. Définir 'tenant' comme connexion par défaut pour cette requête
             DB::setDefaultConnection('tenant');
 
-            // 6. Injecter l'objet tenant dans la requête pour usage ultérieur
+            // 7. Partage des données du tenant dans l'objet Request
             $request->attributes->add(['tenant' => $tenant]);
 
         } catch (\Exception $e) {
-            Log::critical("Échec bascule Nexus [$tenantDomain] : " . $e->getMessage());
+            Log::error("Erreur switch schéma [$tenantDomain] -> [$schemaName] : " . $e->getMessage());
             
             return response()->json([
                 'status' => 'error',
                 'message' => 'Erreur technique d\'aiguillage infrastructure.',
-                'debug' => env('APP_DEBUG') ? $e->getMessage() : null
+                'debug' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
 
