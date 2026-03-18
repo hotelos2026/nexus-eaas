@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Schema;
 
 class AuthController extends Controller
 {
@@ -20,7 +22,7 @@ class AuthController extends Controller
     {
         $request->validate([
             'company_name' => 'required|string|max:255',
-            'domain'       => 'required|string|alpha_dash|unique:pgsql.tenants,domain',
+            'domain'       => 'required|string|alpha_dash|unique:tenants,domain',
             'name'         => 'required|string|max:255',
             'email'        => 'required|string|email|max:255',
             'password'     => 'required|string|min:8',
@@ -42,19 +44,21 @@ class AuthController extends Controller
                 // 2. Création physique du schéma PostgreSQL
                 DB::statement("CREATE SCHEMA IF NOT EXISTS \"$schemaName\"");
 
-                // 3. Exécution des migrations pour le nouveau tenant
-                // On configure temporairement la connexion pour Artisan
-                config(['database.connections.tenant.search_path' => $schemaName]);
-                DB::purge('tenant');
+                // 3. Configuration dynamique pour lancer les migrations
+                // On utilise la connexion par défaut mais on force le search_path
+                Config::set('database.connections.pgsql.search_path', $schemaName);
+                DB::purge('pgsql'); 
+                DB::reconnect('pgsql');
 
+                // Exécution des migrations dans le nouveau schéma
                 Artisan::call('migrate', [
-                    '--database' => 'tenant',
-                    '--path'     => 'database/migrations', // Utilise tes migrations standards
-                    '--force'    => true,
+                    '--path'  => 'database/migrations',
+                    '--force' => true,
                 ]);
 
                 // 4. Création de l'utilisateur Admin dans le nouveau schéma
-                $user = User::on('tenant')->create([
+                // On s'assure d'être toujours sur la connexion pgsql qui pointe vers le nouveau schéma
+                $user = User::create([
                     'name'     => $request->name,
                     'email'    => $request->email,
                     'password' => Hash::make($request->password),
@@ -66,6 +70,7 @@ class AuthController extends Controller
                     'message' => 'Nexus Engine : Instance propulsée avec succès !',
                     'data'    => [
                         'tenant' => $tenant->domain,
+                        'schema' => $schemaName,
                         'admin'  => $user->email
                     ]
                 ], 201);
@@ -82,7 +87,6 @@ class AuthController extends Controller
 
     /**
      * CONNEXION
-     * Authentifie l'utilisateur sur le schéma déjà sélectionné par le Middleware.
      */
     public function login(Request $request)
     {
@@ -92,8 +96,7 @@ class AuthController extends Controller
         ]);
 
         try {
-            // Le Middleware 'IdentifyTenant' a déjà fait le switch de connexion.
-            // On cherche l'utilisateur directement dans le schéma actif.
+            // Le Middleware 'IdentifyTenant' a déjà fait le switch de schéma.
             $user = User::where('email', $request->email)->first();
 
             if (!$user || !Hash::check($request->password, $user->password)) {
