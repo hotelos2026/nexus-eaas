@@ -1,1 +1,13 @@
-{"name": "Tracking", "category": "Logistique"}
+{
+    "id": "SuiviLivraison",
+    "name": "Tracking & Livraison",
+    "category": "Logistique",
+    "description": "Gestion des tournées, preuve de livraison numérique et notifications SMS de suivi.",
+    "price_per_month": 55000,
+    "currency": "Ar",
+    "is_promo": true,
+    "promo_price_per_month": 35000,
+    "icon": "MapPin",
+    "color": "#10b981",
+    "status": "available"
+}

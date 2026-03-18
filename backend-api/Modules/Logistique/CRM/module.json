@@ -1,1 +1,13 @@
-{"name": "CRM Clients", "category": "Logistique"}
+{
+    "id": "CRM",
+    "name": "Relation Client",
+    "category": "Logistique",
+    "description": "Gestion de base de données clients, fidélité et suivi des interactions.",
+    "price_per_month": 40000,
+    "currency": "Ar",
+    "is_promo": true,
+    "promo_price_per_month": 25000,
+    "icon": "Users",
+    "color": "#0ea5e9",
+    "status": "available"
+}

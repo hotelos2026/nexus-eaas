@@ -1,9 +1,12 @@
 {
-    "id": "school_manager",
-    "name": "School Manager",
-    "category": "Academic",
-    "compatible_sectors": ["Education", "Academic"],
+    "id": "SchoolManager",
+    "name": "Gestion Scolaire",
+    "category": "Academique",
+    "description": "Inscriptions, notes, absences et facturation scolarité.",
+    "price_per_month": 120000,
+    "currency": "Ar",
+    "is_promo": false,
     "icon": "GraduationCap",
-    "description": "Gestion des élèves, classes et bulletins."
+    "color": "#8b5cf6",
+    "status": "available"
 }
-

@@ -1,1 +1,12 @@
-{"name": "Flotte", "category": "Logistique"}
+{
+    "id": "GestionFlotte",
+    "name": "Flotte Véhicules",
+    "category": "Logistique",
+    "description": "Suivi carburant, maintenance et planning des chauffeurs.",
+    "price_per_month": 60000,
+    "currency": "Ar",
+    "is_promo": false,
+    "icon": "Truck",
+    "color": "#f59e0b",
+    "status": "available"
+}

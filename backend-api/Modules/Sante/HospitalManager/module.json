@@ -1,8 +1,12 @@
 {
-    "id": "hospital_manager",
-    "name": "Hospitality Manager",
-    "category": "Healthcare",
-    "compatible_sectors": ["Medical", "Hospitality"],
-    "icon": "Activity",
-    "description": "Suivi des patients et dossiers médicaux."
+    "id": "HospitalManager",
+    "name": "Gestion Médicale",
+    "category": "Sante",
+    "description": "Dossiers patients, rendez-vous et gestion de la pharmacie.",
+    "price_per_month": 150000,
+    "currency": "Ar",
+    "is_promo": false,
+    "icon": "Stethoscope",
+    "color": "#ef4444",
+    "status": "available"
 }
