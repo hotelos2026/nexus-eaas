@@ -13,6 +13,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // On s'assure que le middleware CORS est global pour l'API
+        $middleware->use(
+            \Illuminate\Http\Middleware\HandleCors::class
+        );
+
         // 1. Alias pour tes routes
         $middleware->alias([
             'tenant' => \App\Http\Middleware\IdentifyTenant::class,
@@ -22,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // On place IdentifyTenant TOUT EN HAUT pour que Sanctum 
         // sache dans quel schéma chercher l'utilisateur.
         $middleware->priority([
+            \Illuminate\Http\Middleware\HandleCors::class, // <-- AJOUTÉ: Gère les autorisations de headers
             \App\Http\Middleware\IdentifyTenant::class,
             \Illuminate\Cookie\Middleware\EncryptCookies::class,
             \Illuminate\Session\Middleware\StartSession::class,
