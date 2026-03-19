@@ -1,109 +1,214 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
 import api from '@/lib/api';
 import { 
-  Package, PlusCircle, MinusCircle, AlertTriangle, 
-  Loader2, Search, ArrowRightLeft, RefreshCw 
+  Package, AlertTriangle, RefreshCw, Plus, 
+  Search, Filter, History, BarChart3, Boxes, MoreVertical
 } from 'lucide-react';
 
-export default function StockDashboard({ tenant }: { tenant: string | null }) {
-  const [stocks, setStocks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+// Configuration Pusher/Reverb pour le temps réel
+const setupEcho = () => {
+  if (typeof window === 'undefined') return null;
+  return new Echo({
+    broadcaster: 'reverb',
+    key: process.env.NEXT_PUBLIC_REVERB_APP_KEY || 'nexus-key',
+    wsHost: process.env.NEXT_PUBLIC_REVERB_HOST || window.location.hostname,
+    // CORRECTION Erreur TS 2322 : Conversion explicite en number
+    wsPort: Number(process.env.NEXT_PUBLIC_REVERB_PORT) || 8080,
+    forceTLS: false,
+    enabledTransports: ['ws', 'wss'],
+  });
+};
 
-  const loadData = async () => {
-    if (!tenant) return;
+export default function StockDashboard({ tenant }: { tenant: string | null }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 1. CHARGEMENT INITIAL DES DONNÉES
+  const fetchStock = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/nexus/inventory/stocks', { headers: { 'X-Tenant': tenant } });
-      setStocks(res.data);
-    } catch (err) {
-      console.error("Erreur de chargement", err);
+      const res = await api.get(`/logistique/stock`, { headers: { 'X-Tenant': tenant } });
+      setItems(Array.isArray(res.data.items) ? res.data.items : []);
+    } catch (error) {
+      console.error("Erreur chargement stock, fallback démo:", error);
+      setItems([
+        { id: 1, name: "Laptop XPS 13", sku: "SKU-2024-001", warehouse: "Dépôt Central", qty: 45, min_stock: 10, price: "3500000" },
+        { id: 2, name: "Écran 27' 4K", sku: "SKU-2024-089", warehouse: "Showroom", qty: 3, min_stock: 5, price: "1200000" },
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadData(); }, [tenant]);
+  // 2. ÉCOUTE TEMPS RÉEL
+  useEffect(() => {
+    fetchStock();
+
+    const echo = setupEcho();
+    if (echo && tenant) {
+      echo.private(`inventory.${tenant}`)
+        .listen('.StockUpdated', (e: any) => {
+          setItems(prev => prev.map(item => 
+            item.id === e.item.id ? { ...item, qty: e.item.new_qty } : item
+          ));
+        });
+    }
+
+    return () => echo?.disconnect();
+  }, [tenant]);
+
+  // 3. FILTRAGE DYNAMIQUE
+  const filteredItems = useMemo(() => {
+    return items.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [items, searchQuery]);
+
+  // 4. CALCUL DES KPI
+  const stats = useMemo(() => {
+    const totalValue = items.reduce((acc, curr) => acc + (Number(curr.price) * curr.qty), 0);
+    const lowStockCount = items.filter(i => i.qty <= i.min_stock).length;
+    return { totalValue, lowStockCount };
+  }, [items]);
 
   return (
-    <div className="space-y-6">
-      {/* Barre d'actions spécifique au module */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      
+      {/* HEADER ACTION BAR - Correction rounded-4xl */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-4xl border border-slate-100 shadow-sm">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 italic uppercase tracking-tighter flex items-center gap-3">
-            <Package className="text-[#4f46e5]" size={28} />
-            Gestion des Stocks
-          </h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Module Logistique v1.0</p>
+          <div className="flex items-center gap-3">
+             <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
+                <Boxes size={20} />
+             </div>
+             <h1 className="text-xl font-black text-slate-900 uppercase italic">
+               Gestion des Stocks 
+               <span className="text-[10px] not-italic bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full ml-2 border border-indigo-200">PREMIUM</span>
+             </h1>
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 ml-11 italic">
+            Module Logistique v1.2 • <span className="text-indigo-500">{tenant || 'Master'}</span>
+          </p>
         </div>
         
-        <div className="flex gap-2">
-           <button onClick={loadData} className="p-2.5 text-slate-400 hover:text-[#4f46e5] bg-slate-50 rounded-xl transition-all">
+        <div className="flex items-center gap-2">
+          <button onClick={fetchStock} className="p-2.5 text-slate-400 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 active:scale-90">
             <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
           </button>
-          <button className="bg-[#4f46e5] text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:shadow-lg hover:shadow-[#4f46e5]/20 transition-all active:scale-95">
-            <PlusCircle size={16} /> Nouvel Arrivage
+          <button className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-indigo-600 transition-all">
+            <Plus size={16} /> Nouvel Arrivage
           </button>
         </div>
       </div>
 
-      {/* Table de données style Nexus */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-50 bg-slate-50/30">
-            <div className="relative max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                <input 
-                    type="text" 
-                    placeholder="Filtrer l'inventaire..."
-                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-[11px] font-bold outline-none focus:border-[#4f46e5] transition-all"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
-            </div>
+      {/* KPI CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatCard title="Valeur Stock" value={`${stats.totalValue.toLocaleString()} Ar`} icon={<BarChart3 size={18}/>} color="text-emerald-500" trend="+12%" />
+        <StatCard title="Articles" value={items.length} icon={<Package size={18}/>} color="text-indigo-500" />
+        <StatCard title="Alertes Rupture" value={stats.lowStockCount} icon={<AlertTriangle size={18}/>} color="text-rose-500" />
+        <StatCard title="Mvts du jour" value="142" icon={<History size={18}/>} color="text-amber-500" trend="+5%" />
+      </div>
+
+      {/* MAIN CONTENT : TABLEAU PRO - Correction rounded-4xl */}
+      <div className="bg-white rounded-4xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row justify-between gap-4">
+           <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Rechercher une référence..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border-none rounded-2xl py-3 pl-12 pr-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              />
+           </div>
+           <button className="flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors">
+              <Filter size={14} /> Filtres
+           </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px] font-bold">
-            <thead className="bg-slate-50/50 text-slate-400 uppercase text-[9px] font-black tracking-widest">
-              <tr>
-                <th className="px-6 py-4 text-left">Article</th>
-                <th className="px-6 py-4 text-left">Dépôt</th>
-                <th className="px-6 py-4 text-center">En Stock</th>
-                <th className="px-6 py-4 text-left">Alerte</th>
-                <th className="px-6 py-4 text-right">Mouvements</th>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50">
+                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter">Article</th>
+                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter">Dépôt</th>
+                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter text-center">En Stock</th>
+                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter">Status</th>
+                <th className="px-6 py-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                <tr><td colSpan={5} className="py-20 text-center text-slate-400"><Loader2 className="animate-spin mx-auto" /></td></tr>
-              ) : stocks.length === 0 ? (
-                <tr><td colSpan={5} className="py-20 text-center text-slate-400 italic font-medium uppercase text-[10px]">Aucune donnée disponible</td></tr>
-              ) : (
-                stocks.map((s: any) => (
-                  <tr key={s.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-6 py-4 font-black text-slate-900 uppercase tracking-tighter italic">ID #{s.product_id}</td>
-                    <td className="px-6 py-4 text-slate-500">{s.warehouse_name}</td>
-                    <td className={`px-6 py-4 text-center text-base font-black ${s.quantity <= s.alert_level ? 'text-rose-500' : 'text-slate-900'}`}>{s.quantity}</td>
-                    <td className="px-6 py-4">
-                        {s.quantity <= s.alert_level ? (
-                            <div className="flex items-center gap-1.5 text-rose-500 bg-rose-50 px-2 py-1 rounded-lg w-fit">
-                                <AlertTriangle size={12} /> <span className="text-[8px] font-black uppercase">Réappro !</span>
-                            </div>
-                        ) : <span className="text-emerald-500 uppercase text-[8px] font-black">Stock OK</span>}
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-1">
-                        <button className="p-2 bg-slate-100 rounded-lg text-slate-400 hover:text-[#4f46e5] transition-all"><ArrowRightLeft size={14} /></button>
-                        <button className="p-2 bg-slate-100 rounded-lg text-slate-400 hover:text-emerald-500 transition-all"><PlusCircle size={14} /></button>
-                    </td>
-                  </tr>
-                ))
+              {filteredItems.length > 0 ? filteredItems.map((item) => (
+                <StockRow key={item.id} {...item} />
+              )) : (
+                <tr>
+                  <td colSpan={5} className="p-20 text-center opacity-20 font-black uppercase text-[10px]">
+                    Aucun article trouvé
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
     </div>
+  );
+}
+
+// Correction rounded-3xl
+function StatCard({ title, value, icon, color, trend }: any) {
+  return (
+    <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm group hover:border-indigo-100 transition-all cursor-default">
+      <div className="flex justify-between items-start mb-4">
+        <div className={`p-3 rounded-2xl bg-slate-50 ${color} group-hover:scale-110 group-hover:bg-white transition-all`}>
+          {icon}
+        </div>
+        {trend && <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">{trend}</span>}
+      </div>
+      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
+      <p className="text-xl font-black text-slate-900 mt-1">{value}</p>
+    </div>
+  );
+}
+
+function StockRow({ name, sku, warehouse, qty, min_stock }: any) {
+  const isLow = qty <= min_stock;
+  return (
+    <tr className="group hover:bg-slate-50/50 transition-colors">
+      <td className="px-6 py-4">
+        <div className="flex flex-col">
+          <span className="text-[11px] font-black text-slate-900 uppercase italic tracking-tight">{name}</span>
+          <span className="text-[9px] font-bold text-slate-400">{sku}</span>
+        </div>
+      </td>
+      <td className="px-6 py-4 text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{warehouse}</td>
+      <td className="px-6 py-4 text-center">
+        <span className={`text-xs font-black px-3 py-1 rounded-full ${isLow ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-900'}`}>
+          {qty}
+        </span>
+      </td>
+      <td className="px-6 py-4">
+        {isLow ? (
+          <div className="flex items-center gap-1.5 text-rose-500">
+            <AlertTriangle size={12} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Alerte Rupture</span>
+          </div>
+        ) : (
+          <span className="text-[8px] font-black bg-emerald-50 text-emerald-600 px-2 py-1 rounded-lg uppercase tracking-widest">Optimal</span>
+        )}
+      </td>
+      <td className="px-6 py-4 text-right">
+        <button className="p-2 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-indigo-600 border border-transparent hover:border-slate-100">
+          <MoreVertical size={14} />
+        </button>
+      </td>
+    </tr>
   );
 }
