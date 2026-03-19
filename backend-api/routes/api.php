@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 /*
 |--------------------------------------------------------------------------
-| 1. ROUTES GLOBALES (NEXUS CORE - REGISTRE CENTRAL)
+| 1. ROUTES GLOBALES (NEXUS CORE)
 |--------------------------------------------------------------------------
 */
 
@@ -58,24 +58,26 @@ Route::middleware(['tenant'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
 
         /**
-         * NEXUS APP STORE : LISTE DES MODULES AVEC ÉTAT D'ABONNEMENT
+         * NEXUS APP STORE : LA FUSION CRUCIALE (JSON + DB)
+         * C'est ici que tes prix (JSON) rencontrent ton statut (DB)
          */
         Route::get('/nexus/modules', function (ModuleDiscoveryService $discovery) {
             $tenant = request()->attributes->get('tenant_info');
             
-            // Récupère les modules du secteur
+            // 1. Récupère les modules complets (avec prix/icons) via le Service JSON
             $availableModules = $discovery->getAllAvailableModules($tenant->sector);
 
-            // Récupère les IDs souscrits pour ce tenant spécifique (via ID numérique bigint)
-            $subscribedIds = DB::table('subscriptions')
-                ->where('tenant_id', $tenant->id)
-                ->pluck('module_id')
+            // 2. Vérifie les abonnements dans la table 'modules' du schéma client
+            // Correction : On utilise la table 'modules' cohérente avec le TenantController
+            $subscribedNames = DB::table('modules')
+                ->where('is_subscribed', true)
+                ->pluck('name')
                 ->toArray();
 
-            // Enrichit la réponse pour que le frontend sache quoi afficher
-            $modules = collect($availableModules)->map(function ($mod) use ($subscribedIds) {
-                // On compare le slug du module avec la liste des abonnements
-                $mod['is_subscribed'] = in_array($mod['id'], $subscribedIds);
+            // 3. Enrichissement : On injecte 'is_subscribed' dans les données du JSON
+            $modules = collect($availableModules)->map(function ($mod) use ($subscribedNames) {
+                // On compare le NOM du module (ex: "Inventaire & Stock")
+                $mod['is_subscribed'] = in_array($mod['name'], $subscribedNames);
                 return $mod;
             });
 
@@ -88,66 +90,37 @@ Route::middleware(['tenant'])->group(function () {
         });
 
         /**
-         * ACTION DE SOUSCRIPTION GROUPÉE (PANIER / CHECKOUT)
-         * Ajout pour le bouton "Confirmer l'abonnement" du Frontend
+         * SOUSCRIPTION GROUPÉE (PANIER)
          */
         Route::post('/nexus/modules/bulk-subscribe', function (Request $request) {
             $tenant = $request->attributes->get('tenant_info');
-            $moduleIds = $request->input('module_ids', []); // Tableau de slugs ex: ['crm-01', 'stock-02']
+            $moduleNames = $request->input('module_names', []); // On utilise les noms pour la cohérence
 
-            if (empty($moduleIds)) {
+            if (empty($moduleNames)) {
                 return response()->json(['status' => 'error', 'message' => 'Panier vide'], 400);
             }
 
             try {
                 DB::beginTransaction();
                 
-                foreach ($moduleIds as $id) {
-                    DB::table('subscriptions')->updateOrInsert(
+                foreach ($moduleNames as $name) {
+                    // Correction : On tape dans la table 'modules' locale
+                    DB::table('modules')->updateOrInsert(
+                        ['name' => $name],
                         [
-                            'tenant_id' => $tenant->id, // BigInt du tenant
-                            'module_id' => $id          // Slug du module
-                        ],
-                        [
-                            'status'     => 'active',
-                            'created_at' => now(),
+                            'is_subscribed' => true,
                             'updated_at' => now()
                         ]
                     );
                 }
 
                 DB::commit();
-
-                return response()->json([
-                    'status' => 'success',
-                    'message' => count($moduleIds) . " module(s) activé(s) avec succès."
-                ]);
+                return response()->json(['status' => 'success', 'message' => "Activation réussie."]);
 
             } catch (\Exception $e) {
                 DB::rollBack();
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Erreur lors de la souscription',
-                    'error' => $e->getMessage()
-                ], 500);
+                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
             }
-        });
-
-        /**
-         * SOUSCRIPTION INDIVIDUELLE (ANCIENNE MÉTHODE)
-         */
-        Route::post('/nexus/modules/{id}/subscribe', function ($id, Request $request) {
-            $tenant = $request->attributes->get('tenant_info');
-
-            DB::table('subscriptions')->updateOrInsert(
-                ['tenant_id' => $tenant->id, 'module_id' => $id],
-                ['status' => 'active', 'updated_at' => now()]
-            );
-
-            return response()->json([
-                'status' => 'success',
-                'message' => "Module $id activé."
-            ]);
         });
 
         /**
@@ -169,12 +142,8 @@ Route::middleware(['tenant'])->group(function () {
                     'instance' => $currentSchema,
                     'payload'  => $response->successful() ? $response->json() : 'AI service error'
                 ]);
-
             } catch (\Exception $e) {
-                return response()->json([
-                    'status' => 'AI Service Offline',
-                    'error'  => $e->getMessage()
-                ], 503);
+                return response()->json(['status' => 'AI Service Offline', 'error' => $e->getMessage()], 503);
             }
         });
     });

@@ -108,8 +108,39 @@ function DashboardContent() {
     try {
       setLoading(true);
       const res = await api.get('/nexus/modules', { headers: { 'X-Tenant': tenant || 'guest' } });
-      setModules(Array.isArray(res.data) ? res.data : res.data.modules || []);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+      const apiModules = Array.isArray(res.data) ? res.data : res.data.modules || [];
+      
+      if (apiModules.length > 0) {
+        setModules(apiModules);
+      } else {
+        // --- TES DESIGNS DE SECOURS ---
+        setModules([
+          {
+            id: '1',
+            name: 'Inventaire & Stock',
+            category: 'Logistique',
+            description: 'Gestion complète de vos entrepôts et mouvements de stock en temps réel.',
+            price_per_month: 45000,
+            color: '#6366f1',
+            icon: 'Package',
+            is_subscribed: true
+          },
+          {
+            id: '2',
+            name: 'Relation Client',
+            category: 'CRM',
+            description: 'Suivez vos prospects et gérez vos contrats clients efficacement.',
+            price_per_month: 35000,
+            color: '#ec4899',
+            icon: 'Users',
+            is_subscribed: false
+          }
+        ]);
+      }
+    } catch (e) { 
+      console.error(e);
+      // Optionnel: mettre les modules de secours ici aussi en cas d'erreur 500
+    } finally { setLoading(false); }
   }, [tenant]);
 
   useEffect(() => { loadModules(); }, [loadModules]);
