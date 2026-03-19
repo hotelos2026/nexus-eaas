@@ -58,7 +58,7 @@ Route::middleware(['tenant'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
 
         /**
-         * NEXUS APP STORE (AUTOMATISÉ & SÉCURISÉ)
+         * NEXUS APP STORE : LISTE DES MODULES AVEC ÉTAT D'ABONNEMENT
          */
         Route::get('/nexus/modules', function (ModuleDiscoveryService $discovery) {
             $tenant = request()->attributes->get('tenant_info');
@@ -66,14 +66,15 @@ Route::middleware(['tenant'])->group(function () {
             // Récupère les modules du secteur
             $availableModules = $discovery->getAllAvailableModules($tenant->sector);
 
-            // Récupère les IDs souscrits dans la table 'subscriptions'
+            // Récupère les IDs souscrits pour ce tenant spécifique (via ID numérique bigint)
             $subscribedIds = DB::table('subscriptions')
                 ->where('tenant_id', $tenant->id)
                 ->pluck('module_id')
                 ->toArray();
 
-            // Enrichit la réponse pour le frontend
+            // Enrichit la réponse pour que le frontend sache quoi afficher
             $modules = collect($availableModules)->map(function ($mod) use ($subscribedIds) {
+                // On compare le slug du module avec la liste des abonnements
                 $mod['is_subscribed'] = in_array($mod['id'], $subscribedIds);
                 return $mod;
             });
@@ -87,26 +88,65 @@ Route::middleware(['tenant'])->group(function () {
         });
 
         /**
-         * ACTION DE SOUSCRIPTION (ACHAT)
+         * ACTION DE SOUSCRIPTION GROUPÉE (PANIER / CHECKOUT)
+         * Ajout pour le bouton "Confirmer l'abonnement" du Frontend
+         */
+        Route::post('/nexus/modules/bulk-subscribe', function (Request $request) {
+            $tenant = $request->attributes->get('tenant_info');
+            $moduleIds = $request->input('module_ids', []); // Tableau de slugs ex: ['crm-01', 'stock-02']
+
+            if (empty($moduleIds)) {
+                return response()->json(['status' => 'error', 'message' => 'Panier vide'], 400);
+            }
+
+            try {
+                DB::beginTransaction();
+                
+                foreach ($moduleIds as $id) {
+                    DB::table('subscriptions')->updateOrInsert(
+                        [
+                            'tenant_id' => $tenant->id, // BigInt du tenant
+                            'module_id' => $id          // Slug du module
+                        ],
+                        [
+                            'status'     => 'active',
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]
+                    );
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => count($moduleIds) . " module(s) activé(s) avec succès."
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Erreur lors de la souscription',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
+        });
+
+        /**
+         * SOUSCRIPTION INDIVIDUELLE (ANCIENNE MÉTHODE)
          */
         Route::post('/nexus/modules/{id}/subscribe', function ($id, Request $request) {
             $tenant = $request->attributes->get('tenant_info');
 
-            // Sécurité : On évite les doublons
             DB::table('subscriptions')->updateOrInsert(
-                [
-                    'tenant_id' => $tenant->id, 
-                    'module_id' => $id
-                ],
-                [
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]
+                ['tenant_id' => $tenant->id, 'module_id' => $id],
+                ['status' => 'active', 'updated_at' => now()]
             );
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Module $id activé avec succès."
+                'message' => "Module $id activé."
             ]);
         });
 

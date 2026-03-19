@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('subscriptions', function (Blueprint $table) {
         $table->id();
         // ID du tenant qui achète
-        $table->unsignedBigInteger('tenant_id'); 
+        $table->string('tenant_id'); 
         // ID du module (ex: 'GestionStock', 'CRM')
         $table->string('module_id'); 
         // Statut (utile si tu veux gérer des suspensions de paiement plus tard)
