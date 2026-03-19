@@ -5,18 +5,17 @@ namespace Modules\Logistique\GestionStock\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Modules\Logistique\Events\StockUpdated;
 
 class StockController extends Controller
 {
     /**
-     * Récupère la liste réelle des stocks
+     * Récupère la liste réelle des stocks depuis Postgres (Railway)
      */
     public function index(Request $request)
     {
-        $tenantId = $request->header('X-Tenant');
+        // On récupère le tenant envoyé par le header de Next.js
+        $tenantId = $request->header('X-Tenant', 'test-corp');
 
-        // On va chercher les données dans les tables 'products' et 'inventory_stocks'
         $items = DB::table('products')
             ->join('inventory_stocks', 'products.id', '=', 'inventory_stocks.product_id')
             ->where('products.tenant_id', $tenantId)
@@ -37,38 +36,42 @@ class StockController extends Controller
     }
 
     /**
-     * Enregistre un mouvement (Ajout/Retrait) et prévient Reverb
+     * Enregistre un mouvement (Ajout/Retrait) directement en base
      */
     public function move(Request $request)
     {
-        $tenantId = $request->header('X-Tenant');
+        $tenantId = $request->header('X-Tenant', 'test-corp');
         
         $validated = $request->validate([
-            'sku' => 'required|string',
-            'qty' => 'required|integer',
-            'type' => 'required|in:in,out' // 'in' pour arrivage, 'out' pour vente
+            'sku'  => 'required|string',
+            'qty'  => 'required|integer',
+            'type' => 'nullable|in:in,out' 
         ]);
 
-        $modifier = $validated['type'] === 'in' ? $validated['qty'] : -$validated['qty'];
+        // Si le type n'est pas précisé (ex: depuis ton bouton), on considère que c'est une entrée (in)
+        $type = $request->input('type', 'in');
+        $modifier = $type === 'in' ? $validated['qty'] : -$validated['qty'];
 
-        // Mise à jour en base de données
-        $product = DB::table('products')->where('sku', $validated['sku'])->first();
+        // On cherche le produit pour ce tenant précis
+        $product = DB::table('products')
+            ->where('sku', $validated['sku'])
+            ->where('tenant_id', $tenantId)
+            ->first();
         
         if ($product) {
+            // Mise à jour de la quantité
             DB::table('inventory_stocks')
                 ->where('product_id', $product->id)
                 ->increment('quantity', $modifier);
 
-            // 🔥 ON PRÉVIENT REVERB POUR LE TEMPS RÉEL
-            broadcast(new StockUpdated($tenantId, [
-                'sku' => $validated['sku'],
-                'new_qty' => $modifier,
-                'id' => $product->id
-            ]))->toOthers();
-
-            return response()->json(['message' => 'Mouvement enregistré']);
+            return response()->json([
+                'message' => 'Mouvement enregistré avec succès',
+                'new_qty_added' => $modifier
+            ]);
         }
 
-        return response()->json(['error' => 'Produit non trouvé'], 404);
+        return response()->json([
+            'error' => 'Produit non trouvé en base de données. Verifiez le SKU.'
+        ], 404);
     }
 }

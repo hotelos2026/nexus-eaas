@@ -1,33 +1,33 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+// import Echo from 'laravel-echo'; // Commenté pour éviter les crashs tant que Reverb est éteint
+// import Pusher from 'pusher-js';
 import api from '@/lib/api';
 import { 
   Package, AlertTriangle, RefreshCw, Plus, 
   Search, Filter, History, BarChart3, Boxes, MoreVertical, X, Loader2
 } from 'lucide-react';
 
-// --- CONFIGURATION ECHO ---
-const setupEcho = () => {
+// --- CONFIGURATION ECHO (Désactivée pour stabilisation) ---
+/* const setupEcho = () => {
   if (typeof window === 'undefined') return null;
   (window as any).Pusher = Pusher;
   return new Echo({
     broadcaster: 'reverb',
     key: process.env.NEXT_PUBLIC_REVERB_APP_KEY || 'nexus-key',
     wsHost: process.env.NEXT_PUBLIC_REVERB_HOST || window.location.hostname,
-    wsPort: Number(process.env.NEXT_PUBLIC_REVERB_PORT) || 8080,
+    wsPort: Number(process.env.NEXT_PUBLIC_REVERB_PORT) || 443,
     wssPort: Number(process.env.NEXT_PUBLIC_REVERB_PORT) || 443,
-    forceTLS: process.env.NEXT_PUBLIC_REVERB_SCHEME === 'https',
+    forceTLS: true,
     enabledTransports: ['ws', 'wss'],
   });
-};
+}; */
 
 // --- COMPOSANT MODAL ---
 function AddStockModal({ isOpen, onClose, tenant, onSuccess }: any) {
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ name: '', sku: '', qty: 0, warehouse_id: 1 });
+  const [formData, setFormData] = useState({ name: '', sku: '', qty: 0, warehouse_id: 1, type: 'in' });
 
   if (!isOpen) return null;
 
@@ -35,11 +35,15 @@ function AddStockModal({ isOpen, onClose, tenant, onSuccess }: any) {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post('/logistique/stock/add', formData, { headers: { 'X-Tenant': tenant } });
+      // Changement de l'URL pour correspondre au Controller (logistique/stock/add)
+      await api.post('/logistique/stock/add', formData, { 
+        headers: { 'X-Tenant': tenant || 'test-corp' } 
+      });
       onSuccess();
       onClose();
     } catch (error) {
       console.error("Erreur ajout:", error);
+      alert("Erreur lors de l'enregistrement. Vérifiez la console.");
     } finally {
       setLoading(false);
     }
@@ -47,26 +51,26 @@ function AddStockModal({ isOpen, onClose, tenant, onSuccess }: any) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+      <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <h2 className="text-sm font-black uppercase italic text-slate-900">Nouvel Arrivage</h2>
           <button onClick={onClose} className="p-2 hover:bg-white rounded-xl text-slate-400"><X size={18}/></button>
         </div>
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
           <div>
-            <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Article</label>
-            <input required className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" 
+            <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Nom de l'article</label>
+            <input required placeholder="ex: iPhone 15 Pro" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" 
               onChange={e => setFormData({...formData, name: e.target.value})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">SKU</label>
-              <input required className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold" 
+              <label className="text-[10px] font-black uppercase text-slate-400 ml-1">SKU (Référence)</label>
+              <input required placeholder="IPH-15-PRO" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold" 
                 onChange={e => setFormData({...formData, sku: e.target.value})} />
             </div>
             <div>
               <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Quantité</label>
-              <input type="number" required className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold" 
+              <input type="number" required placeholder="0" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-5 text-xs font-bold" 
                 onChange={e => setFormData({...formData, qty: parseInt(e.target.value)})} />
             </div>
           </div>
@@ -87,16 +91,24 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchStock = async () => {
+    if (!tenant) return;
     try {
       setLoading(true);
-      const res = await api.get(`/logistique/stock`, { headers: { 'X-Tenant': tenant } });
-      setItems(Array.isArray(res.data.items) ? res.data.items : []);
+      const res = await api.get(`/logistique/stock`, { 
+        headers: { 'X-Tenant': tenant } 
+      });
+      // Crucial : On n'affiche le fallback QUE si la BDD est vide ET que l'appel a échoué
+      if (res.data && Array.isArray(res.data.items)) {
+        setItems(res.data.items);
+      }
     } catch (error) {
-      console.error("Fallback démo...");
-      setItems([
-        { id: 1, name: "Laptop XPS 13", sku: "SKU-2024-001", warehouse: "Dépôt Central", qty: 45, min_stock: 10, price: 3500000 },
-        { id: 2, name: "Écran 27' 4K", sku: "SKU-2024-089", warehouse: "Showroom", qty: 3, min_stock: 5, price: 1200000 },
-      ]);
+      console.error("Erreur API, affichage mode hors-ligne");
+      // Optionnel: Garder le fallback uniquement pour le développement
+      if (process.env.NODE_ENV === 'development') {
+        setItems([
+          { id: 1, name: "Mode Démo (Erreur API)", sku: "DEMO-001", qty: 0, min_stock: 10, price: 0 },
+        ]);
+      }
     } finally {
       setLoading(false);
     }
@@ -104,24 +116,21 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
 
   useEffect(() => {
     fetchStock();
-    const echo = setupEcho();
-    if (echo && tenant) {
-      echo.channel(`inventory.${tenant}`) // On utilise channel public pour simplifier le test
-        .listen('.StockUpdated', (e: any) => {
-          setItems(prev => prev.map(item => 
-            item.sku === e.item.sku ? { ...item, qty: item.qty + e.item.new_qty } : item
-          ));
-        });
-    }
-    return () => echo?.disconnect();
+    // Le temps réel est commenté pour stabiliser Railway
+    /* const echo = setupEcho();
+    if (echo && tenant) { ... }
+    return () => echo?.disconnect(); */
   }, [tenant]);
 
-  const filteredItems = useMemo(() => items.filter(i => 
-    i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  ), [items, searchQuery]);
+  const filteredItems = useMemo(() => {
+    return (items || []).filter(i => 
+      (i.name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) || 
+      (i.sku?.toLowerCase() || "").includes(searchQuery.toLowerCase())
+    );
+  }, [items, searchQuery]);
 
   const stats = useMemo(() => ({
-    totalValue: items.reduce((acc, curr) => acc + (Number(curr.price) * curr.qty), 0),
+    totalValue: items.reduce((acc, curr) => acc + (Number(curr.price || 0) * (curr.qty || 0)), 0),
     lowStockCount: items.filter(i => i.qty <= i.min_stock).length
   }), [items]);
 
@@ -129,12 +138,11 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
     <div className="space-y-6 animate-in fade-in duration-500">
       <AddStockModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} tenant={tenant} onSuccess={fetchStock} />
       
+      {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
-        <div>
-          <div className="flex items-center gap-3">
-             <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100"><Boxes size={20} /></div>
-             <h1 className="text-xl font-black text-slate-900 uppercase italic">Gestion des Stocks</h1>
-          </div>
+        <div className="flex items-center gap-3">
+           <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100"><Boxes size={20} /></div>
+           <h1 className="text-xl font-black text-slate-900 uppercase italic">Inventaire Réel</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchStock} className="p-2.5 text-slate-400 hover:bg-slate-50 rounded-xl transition-all border border-slate-100">
@@ -146,18 +154,20 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
         </div>
       </div>
 
+      {/* STATS SECTION */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard title="Valeur Stock" value={`${stats.totalValue.toLocaleString()} Ar`} icon={<BarChart3 size={18}/>} color="text-emerald-500" trend="+12%" />
+        <StatCard title="Valeur" value={`${stats.totalValue.toLocaleString()} Ar`} icon={<BarChart3 size={18}/>} color="text-emerald-500" />
         <StatCard title="Articles" value={items.length} icon={<Package size={18}/>} color="text-indigo-500" />
-        <StatCard title="Alertes Rupture" value={stats.lowStockCount} icon={<AlertTriangle size={18}/>} color="text-rose-500" />
-        <StatCard title="Mvts du jour" value="142" icon={<History size={18}/>} color="text-amber-500" trend="+5%" />
+        <StatCard title="Alertes" value={stats.lowStockCount} icon={<AlertTriangle size={18}/>} color="text-rose-500" />
+        <StatCard title="Tenant Actif" value={tenant?.toUpperCase()} icon={<History size={18}/>} color="text-amber-500" />
       </div>
 
+      {/* TABLE SECTION */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row justify-between gap-4">
            <div className="relative flex-1 max-w-md">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input type="text" placeholder="Rechercher..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              <input type="text" placeholder="Filtrer la base de données..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-50 border-none rounded-2xl py-3 pl-12 pr-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" />
            </div>
         </div>
@@ -173,7 +183,13 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredItems.map((item) => <StockRow key={item.id} {...item} />)}
+              {loading ? (
+                <tr><td colSpan={4} className="py-20 text-center text-slate-400 font-bold italic animate-pulse">Chargement des données Railway...</td></tr>
+              ) : filteredItems.length > 0 ? (
+                filteredItems.map((item) => <StockRow key={item.id} {...item} />)
+              ) : (
+                <tr><td colSpan={4} className="py-20 text-center text-slate-400 font-bold italic">Aucun produit en base pour "{tenant}"</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -182,7 +198,8 @@ export default function StockDashboard({ tenant }: { tenant: string | null }) {
   );
 }
 
-function StatCard({ title, value, icon, color, trend }: any) {
+// Sous-composants inchangés (StatCard, StockRow)...
+function StatCard({ title, value, icon, color }: any) {
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm group hover:border-indigo-200 transition-all">
       <div className={`p-3 w-fit rounded-2xl bg-slate-50 ${color} mb-4`}>{icon}</div>
