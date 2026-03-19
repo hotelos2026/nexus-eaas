@@ -4,42 +4,32 @@ namespace Modules\Logistique\GestionStock\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Modules\Logistique\GestionStock\Services\StockService;
-use Modules\Logistique\Events\StockUpdated; // L'événement pour le temps réel
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
+use Modules\Logistique\Events\StockUpdated;
 
 class StockController extends Controller
 {
     /**
-     * Liste le stock global par dépôt pour un Tenant avec calcul des KPIs
+     * Récupère la liste réelle des stocks
      */
     public function index(Request $request)
     {
         $tenantId = $request->header('X-Tenant');
 
-        if (!$tenantId) {
-            return response()->json(['error' => 'Tenant ID missing'], 400);
-        }
-
-        // Récupération des articles en stock avec jointure dépôt
-        $items = DB::table('inventory_stocks')
-            ->join('inventory_warehouses', 'inventory_stocks.warehouse_id', '=', 'inventory_warehouses.id')
-            ->leftJoin('products', 'inventory_stocks.product_id', '=', 'products.id') 
-            ->where('inventory_stocks.tenant_id', $tenantId)
+        // On va chercher les données dans les tables 'products' et 'inventory_stocks'
+        $items = DB::table('products')
+            ->join('inventory_stocks', 'products.id', '=', 'inventory_stocks.product_id')
+            ->where('products.tenant_id', $tenantId)
             ->select(
-                'inventory_stocks.id',
-                'inventory_stocks.product_id',
-                'products.name as name',
-                'products.sku as sku',
-                'products.price as price',
+                'products.id',
+                'products.name',
+                'products.sku',
+                'products.price',
                 'inventory_stocks.quantity as qty',
-                'inventory_stocks.min_stock as min_stock',
-                'inventory_warehouses.name as warehouse'
+                'inventory_stocks.min_stock'
             )
             ->get();
 
-        // Retourne les données formatées pour ton Dashboard Premium
         return response()->json([
             'items' => $items,
             'status' => 'success'
@@ -47,58 +37,38 @@ class StockController extends Controller
     }
 
     /**
-     * Effectue un mouvement (IN / OUT / ADJUST) et diffuse en temps réel
+     * Enregistre un mouvement (Ajout/Retrait) et prévient Reverb
      */
     public function move(Request $request)
     {
-        $request->validate([
-            'product_id'   => 'required|integer',
-            'warehouse_id' => 'required|integer',
-            'quantity'     => 'required|integer|min:1',
-            'type'         => 'required|in:IN,OUT,ADJUST',
-            'reference'    => 'nullable|string',
-            'reason'       => 'nullable|string',
+        $tenantId = $request->header('X-Tenant');
+        
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'qty' => 'required|integer',
+            'type' => 'required|in:in,out' // 'in' pour arrivage, 'out' pour vente
         ]);
 
-        $tenantId = $request->header('X-Tenant');
+        $modifier = $validated['type'] === 'in' ? $validated['qty'] : -$validated['qty'];
 
-        try {
-            DB::beginTransaction();
+        // Mise à jour en base de données
+        $product = DB::table('products')->where('sku', $validated['sku'])->first();
+        
+        if ($product) {
+            DB::table('inventory_stocks')
+                ->where('product_id', $product->id)
+                ->increment('quantity', $modifier);
 
-            // 1. Mise à jour de la base de données via le Service
-            $newBalance = StockService::updateStock(
-                $tenantId,
-                $request->product_id,
-                $request->warehouse_id,
-                $request->quantity,
-                $request->type,
-                (Auth::check() ? Auth::id() : 1), 
-                $request->reference,
-                $request->reason
-            );
-
-            // 2. Déclenchement de l'événement Temps Réel (Broadcasting)
-            // Cet événement sera reçu par ton useEffect(Echo) côté React
-            broadcast(new StockUpdated([
-                'id' => $request->product_id,
-                'new_qty' => $newBalance,
-                'tenant' => $tenantId
+            // 🔥 ON PRÉVIENT REVERB POUR LE TEMPS RÉEL
+            broadcast(new StockUpdated($tenantId, [
+                'sku' => $validated['sku'],
+                'new_qty' => $modifier,
+                'id' => $product->id
             ]))->toOthers();
 
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Mouvement enregistré et diffusé',
-                'new_balance' => $newBalance
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ], 400);
+            return response()->json(['message' => 'Mouvement enregistré']);
         }
+
+        return response()->json(['error' => 'Produit non trouvé'], 404);
     }
 }
