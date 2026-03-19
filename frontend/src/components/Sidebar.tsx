@@ -1,81 +1,173 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { LayoutDashboard, Users, Settings, LogOut, Rocket, X, Store, GraduationCap } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import api from "@/lib/api"; // Assure-toi que ce chemin est correct
+import {
+  Users,
+  Settings,
+  LogOut,
+  Rocket,
+  X,
+  Store,
+  Loader2,
+} from "lucide-react";
+import { DynamicIcon } from "@/components/DynamicIcon"; // Utilisation de ton composant d'icônes dynamiques
 
-export default function Sidebar({ isMobileOpen, setMobileOpen, isCollapsed }: any) {
+interface SubscribedModule {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  is_subscribed: boolean;
+}
+
+export default function Sidebar({
+  isMobileOpen,
+  setMobileOpen,
+  isCollapsed,
+}: any) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tenant = searchParams.get('tenant');
+  
+  const [subscribedModules, setSubscribedModules] = useState<SubscribedModule[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Chargement des modules souscrits
+  useEffect(() => {
+    const fetchSubscribedModules = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get('/nexus/modules', { 
+          headers: { 'X-Tenant': tenant || 'guest' } 
+        });
+        const allModules = Array.isArray(res.data) ? res.data : (res.data.modules || []);
+        // Filtrer uniquement les modules payés/activés
+        const active = allModules.filter((m: SubscribedModule) => m.is_subscribed === true);
+        setSubscribedModules(active);
+      } catch (e) {
+        console.error("Erreur chargement modules sidebar:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSubscribedModules();
+  }, [tenant]);
 
   const handleLogout = async () => {
-    // 1. On récupère les informations avant de nettoyer
-    const token = localStorage.getItem('nexus_token') || localStorage.getItem('user_token');
-    const tenantSlug = localStorage.getItem('current_tenant') || localStorage.getItem('tenant_slug');
+    const token = localStorage.getItem("nexus_token") || localStorage.getItem("user_token");
+    const tenantSlug = localStorage.getItem("current_tenant") || localStorage.getItem("tenant_slug");
 
     try {
       if (token && tenantSlug) {
-        // Appel au backend pour invalider le token côté serveur
         await fetch(`https://backend-nexus.up.railway.app/api/logout`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          }
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         });
       }
     } catch (error) {
       console.error("Erreur déconnexion API:", error);
     } finally {
-      // 2. NETTOYAGE COMPLET
       localStorage.clear();
       sessionStorage.clear();
-
-      // 3. LOGIQUE DE SÉCURITÉ & REDIRECTION
-      // Si on a le slug, on le remet en cache ET on l'ajoute à l'URL 
-      // pour que LoginForm (useSearchParams) le détecte.
       if (tenantSlug) {
-        localStorage.setItem('current_tenant', tenantSlug);
-        localStorage.setItem('tenant_slug', tenantSlug);
-        
-        // Redirection vers le login avec le paramètre de l'instance
+        localStorage.setItem("current_tenant", tenantSlug);
         window.location.href = `/login?tenant=${tenantSlug}`;
       } else {
-        // Si vraiment aucun slug n'est trouvé, retour au login neutre
-        window.location.href = '/login';
+        window.location.href = "/login";
       }
     }
   };
 
   return (
-    <aside className={`fixed lg:static inset-y-0 left-0 bg-white border-r border-slate-200 z-50 transition-all duration-300 transform ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${isCollapsed ? 'lg:w-20' : 'lg:w-64'}`}>
-      <div className="flex flex-col h-full overflow-hidden">
-        
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 transform border-r border-slate-200 bg-white transition-all duration-300 lg:static ${isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "lg:w-20" : "lg:w-64"}`}
+    >
+      <div className="flex h-full flex-col overflow-hidden">
         {/* Logo Section */}
-        <div className={`p-6 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+        <div className={`flex items-center p-6 ${isCollapsed ? "justify-center" : "justify-between"}`}>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-indigo-200 shadow-lg shrink-0">
-              <Rocket className="text-white w-5 h-5" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 shadow-lg shadow-indigo-200">
+              <Rocket className="h-5 w-5 text-white" />
             </div>
-            {!isCollapsed && <span className="font-bold tracking-tight text-lg whitespace-nowrap text-slate-900">NEXUS</span>}
+            {!isCollapsed && (
+              <span className="text-lg font-bold tracking-tight whitespace-nowrap text-slate-900 uppercase">
+                NEXUS
+              </span>
+            )}
           </div>
-          <button className="lg:hidden text-slate-500" onClick={() => setMobileOpen(false)}><X size={20}/></button>
+          <button className="text-slate-500 lg:hidden" onClick={() => setMobileOpen(false)}>
+            <X size={20} />
+          </button>
         </div>
 
         {/* Menu Navigation */}
-        <nav className="flex-1 px-4 space-y-1 overflow-y-auto mt-4 scrollbar-hide">
-          <NavItem icon={<Store size={20}/>} label="App Store" active isCollapsed={isCollapsed} />
-          <NavItem icon={<LayoutDashboard size={20}/>} label="Dashboard" isCollapsed={isCollapsed} />
-          <NavItem icon={<GraduationCap size={20}/>} label="Scolarité" isCollapsed={isCollapsed} />
-          <NavItem icon={<Users size={20}/>} label="Utilisateurs" isCollapsed={isCollapsed} />
+        <nav className="scrollbar-hide mt-4 flex-1 space-y-1 overflow-y-auto px-4">
+          <div className="mb-4">
+             <p className={`text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ${isCollapsed ? "text-center" : "ml-2"}`}>
+                Menu Principal
+             </p>
+             <NavItem
+                icon={<Store size={20} />}
+                label="App Store"
+                active
+                isCollapsed={isCollapsed}
+                onClick={() => router.push(`/dashboard?tenant=${tenant}`)}
+              />
+              <NavItem
+                icon={<Users size={20} />}
+                label="Utilisateurs"
+                isCollapsed={isCollapsed}
+              />
+          </div>
+
+          {/* SECTION DYNAMIQUE : MODULES ACHETÉS */}
+          <div className="pt-4 border-t border-slate-50">
+            <p className={`text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ${isCollapsed ? "text-center" : "ml-2"}`}>
+              Mes Modules
+            </p>
+            
+            {loading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 size={16} className="animate-spin text-slate-300" />
+              </div>
+            ) : subscribedModules.length > 0 ? (
+              subscribedModules.map((mod) => (
+                <NavItem
+                  key={mod.id}
+                  icon={<DynamicIcon name={mod.icon} size={20} />}
+                  label={mod.name}
+                  isCollapsed={isCollapsed}
+                  color={mod.color}
+                />
+              ))
+            ) : (
+              !isCollapsed && (
+                <p className="text-[10px] text-slate-400 italic px-2 py-2 text-center bg-slate-50 rounded-lg">
+                  Aucun module actif
+                </p>
+              )
+            )}
+          </div>
         </nav>
 
         {/* Settings & Logout */}
-        <div className="p-4 border-t border-slate-100 space-y-2">
-          <NavItem icon={<Settings size={20}/>} label="Paramètres" isCollapsed={isCollapsed} />
-          <button 
-            onClick={handleLogout} 
-            className={`flex items-center gap-3 p-2.5 text-sm font-bold text-red-500 hover:bg-red-50 rounded-xl transition-all w-full group ${isCollapsed ? 'justify-center' : 'justify-start'}`}
+        <div className="space-y-2 border-t border-slate-100 p-4">
+          <NavItem
+            icon={<Settings size={20} />}
+            label="Paramètres"
+            isCollapsed={isCollapsed}
+          />
+          <button
+            onClick={handleLogout}
+            className={`group flex w-full items-center gap-3 rounded-xl p-2.5 text-sm font-bold text-red-500 transition-all hover:bg-red-50 ${isCollapsed ? "justify-center" : "justify-start"}`}
           >
-            <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" />
+            <LogOut size={20} className="transition-transform group-hover:-translate-x-1" />
             {!isCollapsed && <span>Quitter</span>}
           </button>
         </div>
@@ -84,14 +176,29 @@ export default function Sidebar({ isMobileOpen, setMobileOpen, isCollapsed }: an
   );
 }
 
-function NavItem({ icon, label, active, isCollapsed }: any) {
+function NavItem({ icon, label, active, isCollapsed, onClick, color }: any) {
   return (
-    <div className={`flex items-center p-2.5 rounded-xl cursor-pointer group transition-all duration-200 ${active ? 'bg-indigo-50 text-indigo-700 border border-indigo-100/50 shadow-sm shadow-indigo-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'} ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
-      <div className="flex items-center gap-3">
-        <span className={active ? 'text-indigo-600' : 'text-slate-400 group-hover:text-indigo-600'} title={isCollapsed ? label : ""}>
+    <div
+      onClick={onClick}
+      className={`group flex cursor-pointer items-center rounded-xl p-2.5 transition-all duration-200 ${
+        active 
+          ? "border border-indigo-100/50 bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-100" 
+          : "border border-transparent text-slate-600 hover:bg-slate-50"
+      } ${isCollapsed ? "justify-center" : "justify-start"}`}
+    >
+      <div className="flex items-center gap-3 overflow-hidden">
+        <span
+          className={`${active ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-600"}`}
+          style={!active && color ? { color: color } : {}}
+          title={isCollapsed ? label : ""}
+        >
           {icon}
         </span>
-        {!isCollapsed && <span className="text-[13px] font-bold whitespace-nowrap tracking-tight">{label}</span>}
+        {!isCollapsed && (
+          <span className="text-[13px] font-bold tracking-tight whitespace-nowrap truncate">
+            {label}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,11 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamText } from "ai";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 // 🔥 CONFIG GROQ
 const groq = createOpenAI({
-  baseURL: 'https://api.groq.com/openai/v1',
+  baseURL: "https://api.groq.com/openai/v1",
   apiKey: process.env.GROQ_API_KEY,
 });
 
@@ -133,7 +133,7 @@ Même si l’utilisateur donne un nom :
 - expert
 - fluide
 - naturel
-`
+`,
 };
 
 // =============================
@@ -141,18 +141,37 @@ Même si l’utilisateur donne un nom :
 // =============================
 
 const triggerWords = [
-  "créer", "creer", "lancer", "commencer",
-  "business", "entreprise", "projet",
-  "intéressé", "tester", "démarrer", "inscription"
+  "créer",
+  "creer",
+  "lancer",
+  "commencer",
+  "business",
+  "entreprise",
+  "projet",
+  "intéressé",
+  "tester",
+  "démarrer",
+  "inscription",
 ];
 
 const businessKeywords = [
-  "magasin", "boutique", "restaurant",
-  "hôtel", "transport", "livraison",
-  "commerce", "entreprise",
-  "université", "ecole", "école",
-  "hopital", "hôpital", "clinique",
-  "startup", "tech", "agence"
+  "magasin",
+  "boutique",
+  "restaurant",
+  "hôtel",
+  "transport",
+  "livraison",
+  "commerce",
+  "entreprise",
+  "université",
+  "ecole",
+  "école",
+  "hopital",
+  "hôpital",
+  "clinique",
+  "startup",
+  "tech",
+  "agence",
 ];
 
 // =============================
@@ -165,38 +184,40 @@ export async function POST(req: Request) {
 
     if (!body.messages || !Array.isArray(body.messages)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid messages format' }),
-        { status: 400 }
+        JSON.stringify({ error: "Invalid messages format" }),
+        { status: 400 },
       );
     }
 
     // 🧹 SANITIZE
     const sanitizedMessages = body.messages.map((m: any) => ({
       role:
-        m.role === 'assistant'
-          ? 'assistant'
-          : m.role === 'system'
-          ? 'system'
-          : 'user',
-      content: String(m.content ?? '').slice(0, 2000), // 🔒 anti abuse
+        m.role === "assistant"
+          ? "assistant"
+          : m.role === "system"
+            ? "system"
+            : "user",
+      content: String(m.content ?? "").slice(0, 2000), // 🔒 anti abuse
     }));
 
     const lastMessage =
-      sanitizedMessages[sanitizedMessages.length - 1]?.content.toLowerCase() || '';
+      sanitizedMessages[sanitizedMessages.length - 1]?.content.toLowerCase() ||
+      "";
 
     // 🧠 INTENTION
-    const isIntentStrong = triggerWords.some(word =>
-      lastMessage.includes(word)
+    const isIntentStrong = triggerWords.some((word) =>
+      lastMessage.includes(word),
     );
 
     // 🧠 MÉTIER
-    const detectedBusiness = businessKeywords.find(word =>
-      lastMessage.includes(word)
+    const detectedBusiness = businessKeywords.find((word) =>
+      lastMessage.includes(word),
     );
 
     // 🧠 LONGUE RÉPONSE
-    const isLongRequest =
-      /(explique|détaille|pourquoi|comment|analyse)/i.test(lastMessage);
+    const isLongRequest = /(explique|détaille|pourquoi|comment|analyse)/i.test(
+      lastMessage,
+    );
 
     // 🧠 PROPULSION DETECT
     const isPropulsion = lastMessage.includes("propulsion");
@@ -209,14 +230,14 @@ export async function POST(req: Request) {
     if (isIntentStrong) {
       dynamicSystemMessages.push({
         role: "system",
-        content: "L'utilisateur veut créer ou démarrer un système de gestion."
+        content: "L'utilisateur veut créer ou démarrer un système de gestion.",
       });
     }
 
     if (detectedBusiness) {
       dynamicSystemMessages.push({
         role: "system",
-        content: `Métier détecté : ${detectedBusiness}. Réponds comme un ERP adapté.`
+        content: `Métier détecté : ${detectedBusiness}. Réponds comme un ERP adapté.`,
       });
     }
 
@@ -224,14 +245,14 @@ export async function POST(req: Request) {
     if (isPropulsion) {
       return new Response(
         `Parfait. Tu peux maintenant lancer la création de ton espace via l’interface pour finaliser ton inscription.`,
-        { status: 200 }
+        { status: 200 },
       );
     }
 
     const finalMessages = [
       SYSTEM_PROMPT,
       ...dynamicSystemMessages,
-      ...sanitizedMessages
+      ...sanitizedMessages,
     ];
 
     // ⏳ effet humain
@@ -241,23 +262,22 @@ export async function POST(req: Request) {
     // 🤖 IA CALL
     // =============================
     const result = await streamText({
-      model: groq.chat('llama-3.1-8b-instant'),
+      model: groq.chat("llama-3.1-8b-instant"),
       messages: finalMessages,
       temperature: 0.35,
       maxOutputTokens: isLongRequest ? 600 : 220,
     });
 
     return result.toTextStreamResponse();
-
   } catch (error: any) {
-    console.error('SENTINEL_CRASH:', error);
+    console.error("SENTINEL_CRASH:", error);
 
     return new Response(
       JSON.stringify({
-        error: 'Internal server error',
+        error: "Internal server error",
         details: error?.message,
       }),
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -37,16 +37,8 @@ export default function RootLayout({
   return (
     <html lang="fr" className="scroll-smooth">
       <body
-        className={`
-          ${geistSans.variable} 
-          ${geistMono.variable} 
-          antialiased 
-          bg-[#0a0a0f] 
-          text-slate-200 
-          selection:bg-purple-500/30
-        `}
+        className={` ${geistSans.variable} ${geistMono.variable} bg-[#0a0a0f] text-slate-200 antialiased selection:bg-purple-500/30`}
       >
-
         {/* 🌌 BACKGROUND BASE (plus doux que noir pur) */}
         <div className="fixed inset-0 -z-10 bg-[#0a0a0f]" />
 
@@ -57,10 +49,9 @@ export default function RootLayout({
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(147,51,234,0.08),transparent_60%)]" />
 
         {/* 🎛️ NOISE OVERLAY (corrigé propre) */}
-        <div className="fixed inset-0 pointer-events-none z-50 opacity-[0.04] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+        <div className="pointer-events-none fixed inset-0 z-50 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.04]" />
 
         {children}
-
       </body>
     </html>
   );
